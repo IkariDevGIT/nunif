@@ -62,7 +62,7 @@ class ResBlocks(nn.Module):
 
 
 class WACBlock(nn.Module):
-    def __init__(self, in_channels, num_heads=4, window_size=8, mlp_ratio=3, shift=False):
+    def __init__(self, in_channels, num_heads, window_size, mlp_ratio=3, shift=False):
         super(WACBlock, self).__init__()
         self.window_size = window_size if isinstance(window_size, (tuple, list)) else (window_size, window_size)
         self.norm1 = RMSNorm1(in_channels)
@@ -78,7 +78,7 @@ class WACBlock(nn.Module):
 
 
 class WACBlocks(nn.Module):
-    def __init__(self, in_channels, num_heads=4, window_size=8, mlp_ratio=3, num_layers=2, shift=None):
+    def __init__(self, in_channels, num_heads, window_size, num_layers, mlp_ratio=3, shift=None):
         assert num_layers % 2 == 0
         super(WACBlocks, self).__init__()
         if isinstance(window_size, int):
