@@ -33,6 +33,8 @@ class RepVGG(nn.Module):
         self.stage4 = self._make_stage(int(512 * width_multiplier[3]), num_blocks[3], stride=2)
         self.gap = nn.AdaptiveAvgPool2d(1)
         self.linear = nn.Linear(int(512 * width_multiplier[3]), num_classes)
+        self.register_buffer("mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1), persistent=False)
+        self.register_buffer("std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1), persistent=False)
 
     def _make_stage(self, planes, num_blocks, stride):
         strides = [stride] + [1] * (num_blocks - 1)
@@ -59,6 +61,12 @@ class RepVGG(nn.Module):
     def get_graph_node_names(self) -> list[str]:
         train_nodes, eval_nodes = get_graph_node_names(self)
         return eval_nodes
+
+    def preprocess(self, x):
+        if x.ndim == 4:
+            return (x - self.mean) / self.std
+        else:
+            return (x - self.mean.view(3, 1, 1)) / self.std.view(3, 1, 1)
 
 
 B1_CHECKPOINT_URL = "https://github.com/nagadomi/nunif/releases/download/0.0.0/RepVGG-B1-deploy.pth"
@@ -105,7 +113,6 @@ def _test_model():
         [
             transforms.Resize(256),
             transforms.CenterCrop(224),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
     x = IO.read_image(args.input) / 255
@@ -116,6 +123,7 @@ def _test_model():
     x = x.cuda()
 
     with torch.no_grad():
+        x = model.preprocess(x)
         output = model(x).squeeze(0)
 
     prob = torch.nn.functional.softmax(output, dim=0)
