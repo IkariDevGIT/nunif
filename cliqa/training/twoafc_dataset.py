@@ -1,4 +1,5 @@
 import os
+import random
 from os import path
 
 import numpy as np
@@ -20,6 +21,7 @@ class TwoAFCDataset(Dataset):
     # Berkeley Adobe Perceptual Patch Similarity
     # 2AFC dataset
     def __init__(self, dataset_dir, training, load_all=False):
+        self.training = training
         if load_all:
             dataset_dirs = [path.join(dataset_dir, "train"), path.join(dataset_dir, "val")]
         else:
@@ -51,10 +53,7 @@ class TwoAFCDataset(Dataset):
         return len(self.judges)
 
     def create_sampler(self, num_samples):
-        return torch.utils.data.sampler.RandomSampler(
-            self,
-            num_samples=num_samples,
-            replacement=True)
+        return torch.utils.data.sampler.RandomSampler(self, num_samples=num_samples, replacement=True)
 
     @staticmethod
     def load_resized(filepath):
@@ -72,6 +71,11 @@ class TwoAFCDataset(Dataset):
         p0 = self.load_resized(triplet[1])
         p1 = self.load_resized(triplet[2])
         judge = torch.from_numpy(np.load(self.judges[index])).reshape(1, 1, 1).float()
+
+        if self.training and random.uniform(0, 1) < 0.5:
+            ref = TF.hflip(ref)
+            p0 = TF.hflip(p0)
+            p1 = TF.hflip(p1)
 
         ref = TF.to_tensor(ref)
         p0 = TF.to_tensor(p0)
