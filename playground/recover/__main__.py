@@ -6,11 +6,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.io as io
 import torchvision.transforms.functional as TF
+from nunif.models import load_model
 from nunif.modules.dinov2 import DINOv2Loss, DINOv2PoolLoss, DINOv2StyleLoss
 from nunif.modules.lpips import LPIPSWith
 from dino.models.l4sn import L4SNLoss
 from dctorch.functional import dct2
 import random
+from cliqa.models.lpips_repvgg import LPIPSRepVGG
 
 
 try:
@@ -135,7 +137,7 @@ def main():
     parser.add_argument("--init-image", type=str, help="initial image")
     parser.add_argument("--model", type=str,
                         choices=["dct", "pool", "style", "swd", "patch-swd", "pos-swd", "dists", "lpips", "fdl",
-                                 "l4sn", "l4sn-swd"],
+                                 "l4sn", "l4sn-swd", "lpips-repvgg"],
                         required=True)
     parser.add_argument("--iteration", type=int, default=20000, help="iteration")
     parser.add_argument("--fp32", action="store_true", help="use fp32")
@@ -196,6 +198,10 @@ def main():
             model = model.eval().cuda()
         case "l4sn-swd":
             model = L4SNLoss(model_type=args.l4sn_type, swd_weight=0.5, swd_indexes=[0, 1], swd_window_size=8)
+            model = model.eval().cuda()
+        case "lpips-repvgg":
+            # TODO: upload
+            model, _ = load_model("models/lpips_repvgg/cliqa.lpips_repvgg.pth")
             model = model.eval().cuda()
 
     optimizer = torch.optim.Adam([x], lr=1e-3, betas=(0.9, 0.99))

@@ -84,7 +84,14 @@ B1_FEATURE_NODES = {
     # 1/32
     "stage4.0.nonlinearity": "l32",
 }
-
+B1_FEATURE_CHANNELS = dict(
+    l2=64,
+    l4=128,
+    l8=256,
+    l16_h=512,
+    l16=512,
+    l32=2048,
+)
 
 def create_RepVGG_B1(url=B1_CHECKPOINT_URL):
     model = RepVGG(num_blocks=[4, 6, 16, 1], width_multiplier=[2, 2, 2, 4], num_classes=1000)
@@ -139,6 +146,7 @@ def _test_features():
     from pprint import pprint
 
     model = create_RepVGG_B1().cuda()
+    print(model)
     feature_extractor = model.create_feature_extractor(B1_FEATURE_NODES)
     x = torch.rand((4, 3, 224, 224)).cuda()
     features = feature_extractor(x)
