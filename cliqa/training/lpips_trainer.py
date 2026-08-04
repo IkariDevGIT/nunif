@@ -50,22 +50,23 @@ def register(subparsers, default_parser):
     )
 
     parser.add_argument("--arch", type=str, default="cliqa.lpips_repvgg", help="network arch")
-    parser.add_argument("--num-samples", type=int, default=50000, help="number of samples for each epoch")
+    parser.add_argument("--num-samples", type=int, default=100000, help="number of samples for each epoch")
 
     parser.set_defaults(
-        batch_size=64,
+        batch_size=8,
         warmup_epoch=1,
-        optimizer="adamw",
+        optimizer="adam",
         learning_rate=0.0001,
-        scheduler="step",
-        learning_rate_cycles=10,
+        scheduler="cosine",
+        learning_rate_cycles=1,
         learning_rate_decay=0.95,
         learning_rate_decay_step=[1],
-        max_epoch=40,
+        max_epoch=20,
         momentum=0.9,
-        weight_decay=0.01,
-        eval_step=4,
-        # disable_amp=True,
+        weight_decay=0.0001,
+        weight_decay_end=0.01,
+        eval_step=1,
+        disable_amp=False,
     )
     parser.set_defaults(handler=train)
 
