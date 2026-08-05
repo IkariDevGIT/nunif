@@ -4,9 +4,37 @@ import torch.nn.functional as F
 
 from nunif.models import Model, register_model
 from nunif.modules.compile_wrapper import conditional_compile
-from nunif.modules.init import basic_module_init
 from nunif.modules.norm import RMSNorm2d
 from nunif.utils.repvgg import B1_FEATURE_CHANNELS, B1_FEATURE_NODES, create_RepVGG_B1
+
+
+class Dist2Logit(nn.Module):
+    def __init__(self, num_kernels=8):
+        super().__init__()
+        self.num_kernels = num_kernels
+        self.gammas = nn.Parameter(
+            torch.cat((torch.linspace(-2.0, 2.0, num_kernels), torch.linspace(-2.0, 2.0, num_kernels)), dim=0).view(
+                1, num_kernels * 2, 1, 1
+            )
+        )
+        self.weights = nn.Parameter(torch.zeros(num_kernels * 2).view(1, num_kernels * 2, 1, 1))
+        self.bias = nn.Parameter(torch.zeros(1))
+
+    @staticmethod
+    def additive_model(x, gammas, weights):
+        gammas = F.softplus(gammas)
+        weights = F.softplus(weights)
+        bases = torch.tanh(x * gammas)
+        output = (bases * weights).sum(dim=1, keepdim=True)
+        return output
+
+    def forward(self, d0, d1):
+        x1 = d0 - d1
+        x2 = torch.log(d0 + 1e-5) - torch.log(d1 + 1e-5)
+        g1, g2 = self.gammas.chunk(2, dim=1)
+        w1, w2 = self.weights.chunk(2, dim=1)
+        logits = self.additive_model(x1, g1, w1) + self.additive_model(x2, g2, w2) + self.bias
+        return logits
 
 
 @register_model
@@ -27,12 +55,9 @@ class LPIPSRepVGG(Model):
         self.register_buffer("std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1), persistent=False)
 
         self.rms_norm = nn.ModuleList([RMSNorm2d(B1_FEATURE_CHANNELS[selected_layers[i]]) for i in range(self.L)])
-        self.dist2logits_mlp = nn.Sequential(
-            nn.Conv2d(5, 16, kernel_size=1, stride=1, padding=0),
-            nn.LeakyReLU(0.2),
-            nn.Conv2d(16, 1, kernel_size=1, stride=1, padding=0),
-        )
-        basic_module_init(self.dist2logits_mlp)
+
+        # This module is called by the trainer
+        self.dist2logits = Dist2Logit()
 
     def train(self, mode=True):
         super().train(mode)
@@ -47,11 +72,6 @@ class LPIPSRepVGG(Model):
             return (x - self.mean.view(3, 1, 1)) / self.std.view(3, 1, 1)
 
     @conditional_compile(["NUNIF_TRAIN"])
-    def dist2logits(self, d0, d1, eps=0.1):
-        x = torch.cat((d0, d1, d0 - d1, d0 / (d1 + eps), d1 / (d0 + eps)), dim=1)
-        return self.dist2logits_mlp(x)
-
-    @conditional_compile(["NUNIF_TRAIN"])
     def forward(self, input, target):
         feats0 = list(self.feature_extractor(self.preprocess(input)).values())
         feats1 = list(self.feature_extractor(self.preprocess(target)).values())
@@ -60,12 +80,11 @@ class LPIPSRepVGG(Model):
             val = 0
             for i in range(self.L):
                 f0 = self.rms_norm[i](feats0[i].float())
-                f1 = self.rms_norm[i](feats1[i].float())
+                f1 = self.rms_norm[i](feats1[i].float()).detach()
                 diff = (f0 - f1) ** 2
                 diff = F.dropout(diff, p=0.5, training=self.training)
-                dist = diff.mean(dim=1, keepdim=True)
-                spatial_average = dist.mean([-2, -1], keepdim=True)
-                val = val + spatial_average
+                dist = diff.mean(dim=[1, 2, 3], keepdim=True)
+                val = val + dist
 
             return val
 
