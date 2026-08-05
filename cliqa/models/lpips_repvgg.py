@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from nunif.models import Model, register_model
 from nunif.modules.compile_wrapper import conditional_compile
 from nunif.modules.norm import RMSNorm2d
-from nunif.utils.repvgg import B1_FEATURE_CHANNELS, B1_FEATURE_NODES, create_RepVGG_B1
+from nunif.utils.repvgg import RepVGG_B1
 
 
 class Dist2Logit(nn.Module):
@@ -46,15 +46,17 @@ class LPIPSRepVGG(Model):
         selected_layers = ["l4", "l8"]  # "l4", "l8", "l16_h", "l16"
         self.L = len(selected_layers)
         nodes = {}
-        for layer_name, name in B1_FEATURE_NODES.items():
+        for layer_name, name in RepVGG_B1.FEATURE_NODES.items():
             if name in selected_layers:
                 nodes[layer_name] = name
-        self.feature_extractor = create_RepVGG_B1().create_feature_extractor(nodes)
+        self.feature_extractor = RepVGG_B1.from_pretrained().create_feature_extractor(nodes)
         self.feature_extractor.eval().requires_grad_(False)
         self.register_buffer("mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1), persistent=False)
         self.register_buffer("std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1), persistent=False)
 
-        self.rms_norm = nn.ModuleList([RMSNorm2d(B1_FEATURE_CHANNELS[selected_layers[i]]) for i in range(self.L)])
+        self.rms_norm = nn.ModuleList(
+            [RMSNorm2d(RepVGG_B1.FEATURE_CHANNELS[selected_layers[i]]) for i in range(self.L)]
+        )
 
         # This module is called by the trainer
         self.dist2logits = Dist2Logit()

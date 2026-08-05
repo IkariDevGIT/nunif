@@ -69,37 +69,42 @@ class RepVGG(nn.Module):
             return (x - self.mean.view(3, 1, 1)) / self.std.view(3, 1, 1)
 
 
-B1_CHECKPOINT_URL = "https://github.com/nagadomi/nunif/releases/download/0.0.0/RepVGG-B1-deploy.pth"
-B1_FEATURE_NODES = {
-    # 1/2
-    "stage0.nonlinearity": "l2",
-    # 1/4
-    "stage1.3.nonlinearity": "l4",
-    # 1/8
-    "stage2.5.nonlinearity": "l8",
-    # 1/16
-    "stage3.7.nonlinearity": "l16_h",
-    # too close to "stage4.0.nonlinearity"
-    "stage3.15.nonlinearity": "l16",
-    # 1/32
-    "stage4.0.nonlinearity": "l32",
-}
-B1_FEATURE_CHANNELS = dict(
-    l2=64,
-    l4=128,
-    l8=256,
-    l16_h=512,
-    l16=512,
-    l32=2048,
-)
+class RepVGG_B1(RepVGG):
+    def __init__(self):
+        super().__init__(num_blocks=[4, 6, 16, 1], width_multiplier=[2, 2, 2, 4], num_classes=1000)
 
-def create_RepVGG_B1(url=B1_CHECKPOINT_URL):
-    model = RepVGG(num_blocks=[4, 6, 16, 1], width_multiplier=[2, 2, 2, 4], num_classes=1000)
-    model.eval()
-    state_dict = torch.hub.load_state_dict_from_url(url, weights_only=True, map_location="cpu")
-    model.load_state_dict(state_dict)
+    @classmethod
+    def from_pretrained(cls, map_location="cpu"):
+        url = cls.CHECKPOINT_URL
+        model = cls()
+        model.eval()
+        state_dict = torch.hub.load_state_dict_from_url(url, weights_only=True, map_location=map_location)
+        model.load_state_dict(state_dict)
+        return model
 
-    return model
+    CHECKPOINT_URL = "https://github.com/nagadomi/nunif/releases/download/0.0.0/RepVGG-B1-deploy.pth"
+    FEATURE_NODES = {
+        # 1/2
+        "stage0.nonlinearity": "l2",
+        # 1/4
+        "stage1.3.nonlinearity": "l4",
+        # 1/8
+        "stage2.5.nonlinearity": "l8",
+        # 1/16
+        "stage3.7.nonlinearity": "l16_h",
+        # too close to "stage4.0.nonlinearity"
+        "stage3.15.nonlinearity": "l16",
+        # 1/32
+        "stage4.0.nonlinearity": "l32",
+    }
+    FEATURE_CHANNELS = dict(
+        l2=64,
+        l4=128,
+        l8=256,
+        l16_h=512,
+        l16=512,
+        l32=2048,
+    )
 
 
 def _test_model():
@@ -114,7 +119,7 @@ def _test_model():
     parser.add_argument("--input", "-i", type=str, required=True, help="input image")
     args = parser.parse_args()
 
-    model = create_RepVGG_B1()
+    model = RepVGG_B1.from_pretrained()
 
     preprocess = transforms.Compose(
         [
@@ -145,9 +150,9 @@ def _test_model():
 def _test_features():
     from pprint import pprint
 
-    model = create_RepVGG_B1().cuda()
+    model = RepVGG_B1.from_pretrained().cuda()
     print(model)
-    feature_extractor = model.create_feature_extractor(B1_FEATURE_NODES)
+    feature_extractor = model.create_feature_extractor(RepVGG_B1.FEATURE_NODES)
     x = torch.rand((4, 3, 224, 224)).cuda()
     features = feature_extractor(x)
     print("** features, len=", len(features))
