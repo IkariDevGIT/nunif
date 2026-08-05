@@ -17,10 +17,13 @@ from nunif.utils.image_loader import ImageLoader
 from nunif.utils.pil_io import load_image_simple
 
 
+SUBDIRS = ["cnn", "mix", "traditional"]
+
+
 class TwoAFCDataset(Dataset):
     # Berkeley Adobe Perceptual Patch Similarity
     # 2AFC dataset
-    def __init__(self, dataset_dir, training, load_all=False):
+    def __init__(self, dataset_dir, training, load_all=False, subdirs=SUBDIRS):
         self.training = training
         if load_all:
             dataset_dirs = [path.join(dataset_dir, "train"), path.join(dataset_dir, "val")]
@@ -34,7 +37,8 @@ class TwoAFCDataset(Dataset):
         self.judges = []
 
         for dataset_dir in dataset_dirs:
-            for subdir in os.listdir(dataset_dir):
+            subdirs = os.listdir(dataset_dir) if subdirs is None else subdirs
+            for subdir in subdirs:
                 subdir = path.join(dataset_dir, subdir)
                 if not path.isdir(subdir):
                     continue
@@ -76,6 +80,10 @@ class TwoAFCDataset(Dataset):
             ref = TF.hflip(ref)
             p0 = TF.hflip(p0)
             p1 = TF.hflip(p1)
+        if self.training and random.uniform(0, 1) < 0.02:
+            ref = TF.rgb_to_grayscale(ref, num_output_channels=3)
+            p0 = TF.rgb_to_grayscale(p0, num_output_channels=3)
+            p1 = TF.rgb_to_grayscale(p1, num_output_channels=3)
 
         ref = TF.to_tensor(ref)
         p0 = TF.to_tensor(p0)
