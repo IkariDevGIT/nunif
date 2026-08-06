@@ -9,7 +9,7 @@ class TwoAFCEnv(BaseEnv):
         self.model = model
         self.device = get_model_device(self.model)
         self.criterion = nn.BCEWithLogitsLoss().to(self.device)
-        assert hasattr(self.model, "dist2logits")
+        assert hasattr(self.model, "dist2logit")
 
     def clear_loss(self):
         self.sum_loss = 0
@@ -27,7 +27,7 @@ class TwoAFCEnv(BaseEnv):
         with self.autocast():
             d0 = self.model(p0, ref)
             d1 = self.model(p1, ref)
-            logits = self.model.dist2logits(d0, d1)
+            logits = self.model.dist2logit(d0, d1)
             loss = self.criterion(logits, judge)
             acc = self.compute_accuracy(d0, d1, judge)
         self.sum_loss += loss.detach()

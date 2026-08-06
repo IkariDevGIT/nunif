@@ -62,7 +62,7 @@ class LPIPSRepVGG(Model):
         )
 
         # This module is called by the trainer
-        self.dist2logits = Dist2Logit()
+        self.dist2logit = Dist2Logit()
 
     def train(self, mode=True):
         super().train(mode)
