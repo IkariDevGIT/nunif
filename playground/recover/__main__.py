@@ -12,7 +12,7 @@ from nunif.modules.lpips import LPIPSWith
 from dino.models.l4sn import L4SNLoss
 from dctorch.functional import dct2
 import random
-from cliqa.models.lpips_repvgg import LPIPSRepVGG
+from cliqa.models.lpips_repvgg import LPIPSRepVGGLoss
 
 
 try:
@@ -200,9 +200,7 @@ def main():
             model = L4SNLoss(model_type=args.l4sn_type, swd_weight=0.5, swd_indexes=[0, 1], swd_window_size=8)
             model = model.eval().cuda()
         case "lpips-repvgg":
-            # TODO: upload
-            model, _ = load_model("models/lpips_repvgg/cliqa.lpips_repvgg.pth")
-            model = model.eval().cuda()
+            model = LPIPSRepVGGLoss.from_pretrained().cuda()
 
     optimizer = torch.optim.Adam([x], lr=1e-3, betas=(0.9, 0.99))
     grad_scaler = torch.amp.GradScaler("cuda", enabled=not args.fp32)

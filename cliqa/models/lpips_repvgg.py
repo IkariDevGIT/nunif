@@ -115,20 +115,36 @@ class LPIPSRepVGGLoss(LPIPSRepVGG):
 
     @classmethod
     def from_pretrained(cls):
-        url = cls.LPIPS_REPVGG_B1_l8_URL
+        import os
+
+        url = cls.L8_URL
+
         # loading the backbone checkpoint
         model = cls()
-        state_dict = torch.hub.load_state_dict_from_url(url, weights_only=True, map_location="cpu")
-        model.rms_norms.load_state_dict(state_dict)
+
+        # loading the trainable weights
+        if os.path.exists(url):
+            state_dict = torch.load(url, weights_only=True, map_location="cpu")
+        else:
+            state_dict = torch.hub.load_state_dict_from_url(url, weights_only=True, map_location="cpu")
+        model.rms_norm.load_state_dict(state_dict)
         model.eval()
 
         return model
 
-    L8_URL = ""
+    # TODO: upload after testing
+    L8_URL = "models/lpips_repvgg/lpips_repvgg_l8.pth"
 
 
 def _test():
     model = LPIPSRepVGG().cuda()
+    input = torch.rand((4, 3, 64, 64)).cuda()
+    target = torch.rand((4, 3, 64, 64)).cuda()
+
+    z = model(input, target)
+    print(z.shape)
+
+    model = LPIPSRepVGGLoss.from_pretrained().cuda()
     input = torch.rand((4, 3, 64, 64)).cuda()
     target = torch.rand((4, 3, 64, 64)).cuda()
 
