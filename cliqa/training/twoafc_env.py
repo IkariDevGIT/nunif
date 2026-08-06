@@ -39,7 +39,12 @@ class TwoAFCEnv(BaseEnv):
     def train_end(self):
         loss = self.to_scalar(self.sum_loss / self.sum_step)
         acc = self.to_scalar(self.sum_acc / self.sum_step)
-        print(f"loss: {loss}, acc: {acc}")
+        if hasattr(self.model, "sparsity"):
+            sparsity = self.model.sparsity()
+        else:
+            sparsity = None
+
+        print(f"loss: {loss}, acc: {acc}, sparsity: {sparsity}")
         return loss
 
     def eval_begin(self):

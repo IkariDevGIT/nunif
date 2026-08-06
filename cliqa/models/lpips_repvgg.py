@@ -36,6 +36,9 @@ class Dist2Logit(nn.Module):
         logits = self.additive_model(x1, g1, w1) + self.additive_model(x2, g2, w2) + self.bias
         return logits
 
+    def weight_decay_config(self, pn):
+        return False
+
 
 @register_model
 class LPIPSRepVGG(Model):
@@ -90,6 +93,39 @@ class LPIPSRepVGG(Model):
 
             return val
 
+    def trainable_state_dict(self):
+        return self.rms_norm.state_dict()
+
+    def sparsity(self):
+        # NOTE: actual weight = 1 + weight; weight == -1 is zero.
+        return [
+            (torch.isclose(norm.weight, -torch.ones_like(norm.weight)).count_nonzero() / norm.weight.numel()).item()
+            for norm in self.rms_norm
+        ]
+
+
+class LPIPSRepVGGLoss(LPIPSRepVGG):
+    def __init__(self):
+        super().__init__()
+        self.eval()
+
+    def train(self, mode=True):
+        super().train(False)
+        self.requires_grad_(False)
+
+    @classmethod
+    def from_pretrained(cls):
+        url = cls.LPIPS_REPVGG_B1_l8_URL
+        # loading the backbone checkpoint
+        model = cls()
+        state_dict = torch.hub.load_state_dict_from_url(url, weights_only=True, map_location="cpu")
+        model.rms_norms.load_state_dict(state_dict)
+        model.eval()
+
+        return model
+
+    L8_URL = ""
+
 
 def _test():
     model = LPIPSRepVGG().cuda()
@@ -100,5 +136,23 @@ def _test():
     print(z.shape)
 
 
+def _extract_state_dict():
+    import argparse
+
+    from nunif.models import load_model
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("--input", "-i", type=str, required=True, help="input checkpoint")
+    parser.add_argument("--output", "-o", type=str, required=True, help="output checkpoint")
+    args = parser.parse_args()
+
+    model, _ = load_model(args.input)
+    model = model.cpu()
+    state_dict = model.trainable_state_dict()
+    torch.save(state_dict, args.output)
+    print("sparsity", model.sparsity())
+
+
 if __name__ == "__main__":
-    _test()
+    # _test()
+    _extract_state_dict()
