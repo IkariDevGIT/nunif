@@ -56,17 +56,20 @@ def register(subparsers, default_parser):
         batch_size=8,
         warmup_epoch=1,
         optimizer="adam",
-        learning_rate=0.0001,
+        learning_rate=1e-4,
+        learning_rate_cosine_min=1e-5,
         scheduler="cosine",
         learning_rate_cycles=1,
         learning_rate_decay=0.95,
         learning_rate_decay_step=[1],
-        max_epoch=20,
+        max_epoch=10,
         momentum=0.9,
         weight_decay=0.0001,
         weight_decay_end=0.01,
         eval_step=1,
         disable_amp=False,
+        seed=-1,
+        save_epoch=True,
     )
     parser.set_defaults(handler=train)
 

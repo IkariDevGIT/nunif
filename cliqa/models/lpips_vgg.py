@@ -119,6 +119,9 @@ class LPIPSVGG16(Model):
     def trainable_state_dict(self):
         return self.rms_norm.state_dict()
 
+    def load_trainable_state_dict(self, state_dict):
+        self.rms_norm.load_state_dict(state_dict)
+
     def sparsity(self):
         # NOTE: actual weight = 1 + weight; weight == -1 is zero.
         return [
@@ -156,7 +159,7 @@ class LPIPSVGG16Loss(LPIPSVGG16):
         return model
 
     # TODO: upload after testing
-    L16_URL = "models/lpips_vgg/lpips_vgg16_l16.pth"
+    L16_URL = "models/lpips_vgg16_epoch/lpips_vgg16_l16.pth"
 
 
 def _test():
@@ -171,15 +174,26 @@ def _extract_state_dict():
     from nunif.models import load_model
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--input", "-i", type=str, required=True, help="input checkpoint")
+    parser.add_argument("--input", "-i", type=str, nargs="+", required=True, help="input checkpoints")
     parser.add_argument("--output", "-o", type=str, required=True, help="output checkpoint")
     args = parser.parse_args()
 
-    model, _ = load_model(args.input)
-    model = model.cpu()
-    state_dict = model.trainable_state_dict()
+    state_dict = None
+    for checkpoint in args.input:
+        model, _ = load_model(checkpoint)
+        model = model.cpu()
+        print(f"{checkpoint}: sparsity: {model.sparsity()}")
+        if state_dict is None:
+            state_dict = model.trainable_state_dict()
+        else:
+            for k, v in model.trainable_state_dict().items():
+                state_dict[k] += v
+    for k, v in state_dict.items():
+        state_dict[k] /= len(args.input)
+
+    model.load_trainable_state_dict(state_dict)
     torch.save(state_dict, args.output)
-    print("sparsity", model.sparsity())
+    print("marged", args.output, "sparsity", model.sparsity())
 
 
 if __name__ == "__main__":
