@@ -13,6 +13,7 @@ from dino.models.l4sn import L4SNLoss
 from dctorch.functional import dct2
 import random
 from cliqa.models.lpips_repvgg import LPIPSRepVGGLoss
+from cliqa.models.lpips_vgg import LPIPSVGG16Loss
 
 
 try:
@@ -137,7 +138,7 @@ def main():
     parser.add_argument("--init-image", type=str, help="initial image")
     parser.add_argument("--model", type=str,
                         choices=["dct", "pool", "style", "swd", "patch-swd", "pos-swd", "dists", "lpips", "fdl",
-                                 "l4sn", "l4sn-swd", "lpips-repvgg"],
+                                 "l4sn", "l4sn-swd", "lpips-repvgg", "lpips-vgg16"],
                         required=True)
     parser.add_argument("--iteration", type=int, default=20000, help="iteration")
     parser.add_argument("--fp32", action="store_true", help="use fp32")
@@ -201,6 +202,8 @@ def main():
             model = model.eval().cuda()
         case "lpips-repvgg":
             model = LPIPSRepVGGLoss.from_pretrained().cuda()
+        case "lpips-vgg16":
+            model = LPIPSVGG16Loss.from_pretrained().cuda()
 
     optimizer = torch.optim.Adam([x], lr=1e-3, betas=(0.9, 0.99))
     grad_scaler = torch.amp.GradScaler("cuda", enabled=not args.fp32)
