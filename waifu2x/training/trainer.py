@@ -748,6 +748,7 @@ class Waifu2xTrainer(Trainer):
                 da_antialias_p=self.args.da_antialias_p,
                 da_hflip_only=self.args.da_hflip_only,
                 da_no_rotate=self.args.da_no_rotate,
+                da_rotate_p=self.args.da_rotate_p,
                 da_cutmix_p=self.args.da_cutmix_p,
                 da_mixup_p=self.args.da_mixup_p,
                 deblur=self.args.deblur,
@@ -958,6 +959,8 @@ def register(subparsers, default_parser):
                         help="restrict random flip to horizontal flip only")
     parser.add_argument("--da-no-rotate", action="store_true",
                         help="restrict random rotate when style=photo")
+    parser.add_argument("--da-rotate-p", type=float, default=0.0,
+                        help="random rotate when style is not photo")
     parser.add_argument("--da-cutmix-p", type=float, default=0.0,
                         help="random cutmix data augmentation for gt image")
     parser.add_argument("--da-mixup-p", type=float, default=0.0,
