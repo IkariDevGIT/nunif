@@ -153,7 +153,7 @@ class LPIPSVGG16Loss(LPIPSVGG16):
             state_dict = torch.load(url, weights_only=True, map_location="cpu")
         else:
             state_dict = torch.hub.load_state_dict_from_url(url, weights_only=True, map_location="cpu")
-        model.rms_norm.load_state_dict(state_dict)
+        model.load_trainable_state_dict(state_dict)
         model.eval()
 
         return model
