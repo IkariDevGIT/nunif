@@ -42,7 +42,7 @@ from .dataset import Waifu2xDataset
 # loss
 
 
-def _dctirm(rotate=True, translate=True):
+def _dctirm(rotate=True, translate=True, sharp=False):
     losses = (
         DCTLoss(window_size=4, clamp=True),
         DCTLoss(window_size=24, clamp=True, random_instance_rotate=rotate),
@@ -53,7 +53,12 @@ def _dctirm(rotate=True, translate=True):
     else:
         preprocess_pair = None
 
-    return WeightedLoss(losses, weights=(0.2, 0.2, 0.6), preprocess_pair=preprocess_pair)
+    if sharp:
+        weights = (0.3, 0.3, 0.4)
+    else:
+        weights = (0.2, 0.2, 0.6)
+
+    return WeightedLoss(losses, weights=weights, preprocess_pair=preprocess_pair)
 
 
 LOSS_FUNCTIONS = {
@@ -74,6 +79,7 @@ LOSS_FUNCTIONS = {
     "y_l1fftgrad": lambda: YRGBL1FFTGradientLoss(fft_weight=0.1, grad_weight=0.1, diag=False),
     "dct": lambda: DCTLoss(clamp=True),
     "dctirm": lambda: _dctirm(),
+    "dctirm_sharp": lambda: _dctirm(sharp=True),
     "dctirm_dino_align": lambda: DINOv2AlignmentLoss(_dctirm(), weight=0.01),
     "dctir24": lambda: WeightedLoss(
         (DCTLoss(window_size=24, clamp=True, random_rotate=True, overlap=True),),
