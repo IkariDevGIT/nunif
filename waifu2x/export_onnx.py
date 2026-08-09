@@ -14,7 +14,6 @@ from nunif.models.onnx_helper_models import (
     ONNXCreateSeamBlendingFilter,
     ONNXAlphaBorderPadding,
     ONNXScale1x,  # identity with offset,
-    ONNXAntialias,
 )
 from nunif.logger import logger
 
@@ -32,10 +31,10 @@ def convert_cunet(model_dir, output_dir):
         for noise_level in (0, 1, 2, 3):
             export_onnx(path.join(in_dir, f"noise{noise_level}.pth"),
                         path.join(out_dir, f"noise{noise_level}.onnx"),
-                        dynamo=False)
+                        dynamo=True)
 
         scale1x = ONNXScale1x(offset=28)
-        scale1x.export_onnx(path.join(out_dir, "scale1x.onnx"))
+        scale1x.export_onnx(path.join(out_dir, "scale1x.onnx"), dynamo=True)
 
 
 def convert_upcunet(model_dir, output_dir):
@@ -46,10 +45,10 @@ def convert_upcunet(model_dir, output_dir):
         for noise_level in (0, 1, 2, 3):
             export_onnx(path.join(in_dir, f"noise{noise_level}_scale2x.pth"),
                         path.join(out_dir, f"noise{noise_level}_scale2x.onnx"),
-                        dynamo=False)
+                        dynamo=True)
 
         export_onnx(path.join(in_dir, "scale2x.pth"),
-                    path.join(out_dir, "scale2x.onnx"))
+                    path.join(out_dir, "scale2x.onnx"), dynamo=True)
 
 
 def convert_swin_unet_art(model_dir, output_dir):
@@ -133,9 +132,6 @@ def convert_utils(output_dir):
 
     alpha_border_padding = ONNXAlphaBorderPadding()
     alpha_border_padding.export_onnx(path.join(utils_dir, "alpha_border_padding.onnx"))
-
-    antialias = ONNXAntialias()
-    antialias.export_onnx(path.join(utils_dir, "antialias.onnx"))
 
 
 if __name__ == "__main__":
