@@ -88,19 +88,23 @@ class I2IBaseModel(Model):
         return tile_size
 
     def export_onnx(self, f, dynamo=False, **kwargs):
-        shape = [1, self.i2i_in_channels, self.i2i_default_tile_size, self.i2i_default_tile_size]
+        tile_size = self.find_valid_tile_size(self.i2i_default_tile_size)
+        shape = [2, self.i2i_in_channels, tile_size, tile_size]
         x = torch.rand(shape, dtype=torch.float32)
         model = self.to_inference_model()
         if dynamo:
+            batch_size = torch.export.Dim("batch_size", min=1)
+            input_height = torch.export.Dim("input_height")
+            input_width = torch.export.Dim("input_width")
             onnx_program = torch.onnx.export(
                 model,
                 (x,),
                 input_names=["x"],
                 output_names=["y"],
                 dynamic_shapes={
-                    "x": {0: torch.export.Dim("batch_size"),
-                          2: torch.export.Dim("input_height"),
-                          3: torch.export.Dim("input_width")}
+                    "x": {0: batch_size,
+                          2: input_height,
+                          3: input_width}
                 },
                 dynamo=True,
                 external_data=False,
