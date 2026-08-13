@@ -108,10 +108,10 @@ export class SeamBlending {
 
     async create_seam_blending_filter() {
         const ses = await onnxSession.getSession(CONFIG.get_helper_model_path("create_seam_blending_filter"));
-        let scale = new ort.Tensor("int64", BigInt64Array.from([BigInt(this.scale)]), []);
-        let offset = new ort.Tensor("int64", BigInt64Array.from([BigInt(this.offset)]), []);
-        let tile_size = new ort.Tensor("int64", BigInt64Array.from([BigInt(this.tile_size)]), []);
-        let out = await ses.run({
+        const scale = new ort.Tensor("int64", BigInt64Array.from([BigInt(this.scale)]), []);
+        const offset = new ort.Tensor("int64", BigInt64Array.from([BigInt(this.offset)]), []);
+        const tile_size = new ort.Tensor("int64", BigInt64Array.from([BigInt(this.tile_size)]), []);
+        const out = await ses.run({
             "scale": scale,
             "offset": offset,
             "tile_size": tile_size,

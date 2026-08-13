@@ -221,6 +221,10 @@ export const onnxRunner = {
         // load model
         const has_alpha = alpha_config != null;
         const model = await onnxSession.getSession(config.path);
+        // TTA does not work with WebGPU, so disable it when WebGPU is selected or in auto mode.
+        const is_webgpu_potential = (onnxSession.backend === "webgpu" || onnxSession.backend === "auto");
+        const effective_tta_level = is_webgpu_potential ? 0 : tta_level;
+
         let alpha_model = null;
         if (has_alpha) {
             alpha_model = await onnxSession.getSession(alpha_config.path);
@@ -240,7 +244,7 @@ export const onnxRunner = {
             await seam_blending.build();
 
             p = seam_blending.get_rendering_config();
-            x = await this.alpha_border_padding(rgb, alpha1, BigInt(config.offset));
+            x = await this.alpha_border_padding(rgb, alpha1, config.offset);
             x = await this.padding(x, BigInt(p.pad[0]), BigInt(p.pad[1]),
                 BigInt(p.pad[2]), BigInt(p.pad[3]), config.padding);
             alpha3 = await this.padding(alpha3, BigInt(p.pad[0]), BigInt(p.pad[1]),
@@ -289,24 +293,24 @@ export const onnxRunner = {
             let tile_y, tile_alpha_y;
             if (single_color == null) {
                 if (has_alpha) {
-                    if (tta_level > 0) {
-                        tile_x = await this.tta_split(tile_x, BigInt(tta_level));
+                    if (effective_tta_level > 0) {
+                        tile_x = await this.tta_split(tile_x, effective_tta_level);
                     }
                     const output = await model.run({ x: tile_x });
                     tile_y = output.y;
-                    if (tta_level > 0) {
-                        tile_y = await this.tta_merge(tile_y, BigInt(tta_level));
+                    if (effective_tta_level > 0) {
+                        tile_y = await this.tta_merge(tile_y, effective_tta_level);
                     }
                     const alpha_output = await alpha_model.run({ x: tile_alpha3 });
                     tile_alpha_y = alpha_output.y;
                 } else {
-                    if (tta_level > 0) {
-                        tile_x = await this.tta_split(tile_x, BigInt(tta_level));
+                    if (effective_tta_level > 0) {
+                        tile_x = await this.tta_split(tile_x, effective_tta_level);
                     }
                     const tile_output = await model.run({ x: tile_x });
                     tile_y = tile_output.y;
-                    if (tta_level > 0) {
-                        tile_y = await this.tta_merge(tile_y, BigInt(tta_level));
+                    if (effective_tta_level > 0) {
+                        tile_y = await this.tta_merge(tile_y, effective_tta_level);
                     }
                 }
             } else {
@@ -343,34 +347,34 @@ export const onnxRunner = {
 
     async padding(x, left, right, top, bottom, mode) {
         const ses = await onnxSession.getSession(CONFIG.get_helper_model_path(mode + "_pad"));
-        left = new ort.Tensor("int64", BigInt64Array.from([left]), []);
-        right = new ort.Tensor("int64", BigInt64Array.from([right]), []);
-        top = new ort.Tensor("int64", BigInt64Array.from([top]), []);
-        bottom = new ort.Tensor("int64", BigInt64Array.from([bottom]), []);
+        const left_t = new ort.Tensor("int64", BigInt64Array.from([BigInt(left)]), []);
+        const right_t = new ort.Tensor("int64", BigInt64Array.from([BigInt(right)]), []);
+        const top_t = new ort.Tensor("int64", BigInt64Array.from([BigInt(top)]), []);
+        const bottom_t = new ort.Tensor("int64", BigInt64Array.from([BigInt(bottom)]), []);
         const out = await ses.run({
             "x": x,
-            "left": left, "right": right,
-            "top": top, "bottom": bottom
+            "left": left_t, "right": right_t,
+            "top": top_t, "bottom": bottom_t
         });
         return out.y;
     },
 
     async tta_split(x, tta_level) {
         const ses = await onnxSession.getSession(CONFIG.get_helper_model_path("tta_split"));
-        tta_level = new ort.Tensor("int64", BigInt64Array.from([tta_level]), []);
+        const tta_level_tensor = new ort.Tensor("int64", BigInt64Array.from([BigInt(tta_level)]), []);
         const out = await ses.run({
             "x": x,
-            "tta_level": tta_level
+            "tta_level": tta_level_tensor
         });
         return out.y;
     },
 
     async tta_merge(x, tta_level) {
         const ses = await onnxSession.getSession(CONFIG.get_helper_model_path("tta_merge"));
-        tta_level = new ort.Tensor("int64", BigInt64Array.from([tta_level]), []);
+        const tta_level_tensor = new ort.Tensor("int64", BigInt64Array.from([BigInt(tta_level)]), []);
         const out = await ses.run({
             "x": x,
-            "tta_level": tta_level
+            "tta_level": tta_level_tensor
         });
         return out.y;
     },
@@ -380,11 +384,11 @@ export const onnxRunner = {
         // unsqueeze
         rgb = new ort.Tensor("float32", rgb.data, [rgb.dims[1], rgb.dims[2], rgb.dims[3]]);
         alpha = new ort.Tensor("float32", alpha.data, [alpha.dims[1], alpha.dims[2], alpha.dims[3]]);
-        offset = new ort.Tensor("int64", BigInt64Array.from([offset]), []);
+        const offset_t = new ort.Tensor("int64", BigInt64Array.from([BigInt(offset)]), []);
         const out = await ses.run({
             "rgb": rgb,
             "alpha": alpha,
-            "offset": offset,
+            "offset": offset_t,
         });
         // squeeze
         return new ort.Tensor("float32", out.y.data, [1, out.y.dims[0], out.y.dims[1], out.y.dims[2]]);

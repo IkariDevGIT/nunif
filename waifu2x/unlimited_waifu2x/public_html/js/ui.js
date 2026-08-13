@@ -32,7 +32,8 @@ export class AppUI {
             message: document.getElementById("message"),
             scaleComment: document.getElementById("scale-comment"),
             tileComment: document.getElementById("tile-comment"),
-            pasteButton: document.getElementById("paste-button")
+            pasteButton: document.getElementById("paste-button"),
+            ttaRow: document.getElementById("tta-row")
         };
 
         this.init();
@@ -77,6 +78,7 @@ export class AppUI {
                 if (name === "backend") {
                     onnxSession.backend = el.value;
                     onnxSession.sessions = {}; // clear sessions to switch backend
+                    this.updateTTAVisibility();
                 }
             });
         });
@@ -122,6 +124,7 @@ export class AppUI {
                 }
             }
         });
+        this.updateTTAVisibility();
         if (Settings.get("tile_random") === "true") {
             this.dom.tileRandom.checked = true;
         }
@@ -132,6 +135,15 @@ export class AppUI {
             this.dom.tileComment.style.display = "";
         } else {
             this.dom.tileComment.style.display = "none";
+        }
+    }
+
+    updateTTAVisibility() {
+        const backend = this.dom.backend.value;
+        if (backend === "webgpu" || backend === "auto") {
+            this.dom.ttaRow.style.display = "none";
+        } else {
+            this.dom.ttaRow.style.display = "";
         }
     }
 
