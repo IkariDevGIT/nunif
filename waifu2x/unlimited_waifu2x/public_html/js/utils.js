@@ -1,33 +1,24 @@
-export async function checkWebGPU() {
-    try {
-        if (!navigator.gpu) {
-            return false;
-        }
-        const adapter = await navigator.gpu.requestAdapter();
-        if (!adapter) {
-            return false;
-        }
-        // requestAdapterInfo is deprecated/removed in some versions, but keeping for compatibility if it exists
-        if (adapter.requestAdapterInfo) {
-            const adapter_info = await adapter.requestAdapterInfo();
-            console.log(adapter_info);
-        }
-        const device = await adapter.requestDevice();
-        return device ? true : false;
-    } catch (_e) {
-        return false;
-    }
-}
-
 export const onnxSession = {
     sessions: {},
+    backend: "auto",
     async getSession(onnx_path) {
         if (!(onnx_path in this.sessions)) {
+            let ep;
+            if (this.backend === "webgpu") {
+                ep = ["webgpu"];
+            } else if (this.backend === "wasm") {
+                ep = ["wasm"];
+            } else {
+                ep = ["webgpu", "wasm"];
+            }
             try {
                 this.sessions[onnx_path] = await ort.InferenceSession.create(
                     onnx_path,
                     // webgl provider does not work due to various problems
-                    { executionProviders: ["wasm"] }
+                    {
+                        logSeverityLevel: 3,
+                        executionProviders: ep,
+                    }
                 );
             } catch (error) {
                 console.error(error);

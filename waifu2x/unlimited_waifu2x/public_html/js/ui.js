@@ -1,6 +1,6 @@
 import { CONFIG } from "./models.js";
 import { onnxRunner } from "./runner.js";
-import { decodeImage, checkClipboard, readFromClipboard, uuid } from "./utils.js";
+import { decodeImage, checkClipboard, readFromClipboard, uuid, onnxSession } from "./utils.js";
 
 class Settings {
     static get(name, defaultValue = null) {
@@ -24,6 +24,7 @@ export class AppUI {
             tileRandom: document.querySelector("input[name=tile_random]"),
             tta: document.querySelector("select[name=tta]"),
             alpha: document.querySelector("select[name=alpha]"),
+            backend: document.querySelector("select[name=backend]"),
             start: document.getElementById("start"),
             stop: document.getElementById("stop"),
             src: document.getElementById("src"),
@@ -65,13 +66,17 @@ export class AppUI {
         });
 
         // Settings persistence
-        ["noise_level", "scale", "tile_size", "tta", "alpha"].forEach(name => {
+        ["noise_level", "scale", "tile_size", "tta", "alpha", "backend"].forEach(name => {
             const el = document.querySelector(`select[name=${name}]`);
             el.addEventListener("change", () => {
                 Settings.set(name, el.value);
                 if (name === "tile_size") {
                     const style = this.dom.model.value.split(".")[1];
                     this.updateTileComment(style);
+                }
+                if (name === "backend") {
+                    onnxSession.backend = el.value;
+                    onnxSession.sessions = {}; // clear sessions to switch backend
                 }
             });
         });
@@ -103,7 +108,7 @@ export class AppUI {
                 this.dom.model.value = oldValue || "swin_unet.art";
             }
         }
-        ["noise_level", "scale", "tile_size", "tta", "alpha"].forEach(name => {
+        ["noise_level", "scale", "tile_size", "tta", "alpha", "backend"].forEach(name => {
             const val = Settings.get(name);
             if (val) {
                 const el = document.querySelector(`select[name=${name}]`);
@@ -111,6 +116,9 @@ export class AppUI {
                 el.value = val;
                 if (!el.value) {
                     el.value = oldValue;
+                }
+                if (name === "backend") {
+                    onnxSession.backend = el.value;
                 }
             }
         });
