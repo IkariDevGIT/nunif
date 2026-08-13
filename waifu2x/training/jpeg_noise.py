@@ -43,10 +43,7 @@ EVAL_QUALITY = {
 
 # Use custom qtables
 QTABLE_FILE = path.join(path.dirname(__file__), "_qtables_1.pth")
-if path.exists(QTABLE_FILE):
-    QTABLES = torch.load(QTABLE_FILE, weights_only=True)
-else:
-    QTABLES = None
+QTABLES = torch.load(QTABLE_FILE, weights_only=True, map_location="cpu")
 
 
 def choose_validation_jpeg_quality(index, style, noise_level):
@@ -249,7 +246,7 @@ class RandomJPEGNoiseX:
             # use noise level noise
             noise_level = self.noise_level
 
-        if self.style == "photo" and QTABLES and noise_level in {2, 3} and random.uniform(0, 1) < 0.25:
+        if self.style == "photo" and noise_level in {2, 3} and random.uniform(0, 1) < 0.25:
             x = add_jpeg_noise_qtable(x)
             strength_factor = 1.0 if noise_level == 3 else 0.75
             if random.uniform(0, 1) < 0.5:
@@ -263,6 +260,9 @@ class RandomJPEGNoiseX:
                     x = sharpen_noise_all(x, strength=random.uniform(0.1, 0.4) * strength_factor)
                     if random.uniform(0, 1) < 0.25:
                         x = add_jpeg_noise(x, quality=random.randint(80, 95), subsampling="4:2:0")
+            return x, y
+        elif self.style == "art" and noise_level in {2, 3} and random.uniform(0, 1) < 0.1:
+            x = add_jpeg_noise_qtable(x)
             return x, y
 
         qualities = choose_jpeg_quality(self.style, noise_level)
