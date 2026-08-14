@@ -32,10 +32,9 @@ class ONNXReflectionPadding(I2IBaseModel):
         pad = torch.tensor(16, dtype=torch.int64)
         model = torch.jit.script(self.to_inference_model())
         # ScriptModule requires dynamo=False
-        kwargs["dynamo"] = False
         torch.onnx.export(
             model,
-            [x, pad, pad, pad, pad],
+            (x, pad, pad, pad, pad),
             f,
             input_names=["x", "left", "right", "top", "bottom"],
             output_names=["y"],
@@ -43,6 +42,8 @@ class ONNXReflectionPadding(I2IBaseModel):
                 "x": {0: "batch_size", 2: "input_height", 3: "input_width"},
                 "y": {0: "batch_size", 2: "height", 3: "width"},
             },
+            dynamo=False,
+            external_data=False,
             **kwargs,
         )
 
@@ -60,10 +61,9 @@ class ONNXReplicationPadding(I2IBaseModel):
         x = torch.rand([1, 3, 256, 256], dtype=torch.float32)
         pad = torch.tensor(16, dtype=torch.int64)
         model = torch.jit.script(self.to_inference_model())
-        kwargs["dynamo"] = False
         torch.onnx.export(
             model,
-            [x, pad, pad, pad, pad],
+            (x, pad, pad, pad, pad),
             f,
             input_names=["x", "left", "right", "top", "bottom"],
             output_names=["y"],
@@ -71,6 +71,8 @@ class ONNXReplicationPadding(I2IBaseModel):
                 "x": {0: "batch_size", 2: "input_height", 3: "input_width"},
                 "y": {0: "batch_size", 2: "height", 3: "width"},
             },
+            dynamo=False,
+            external_data=False,
             **kwargs,
         )
 
@@ -104,10 +106,9 @@ class ONNXTTASplit(I2IBaseModel):
         x = torch.rand([1, 3, 256, 256], dtype=torch.float32)
         tta_level = torch.tensor(2, dtype=torch.int64)
         model = torch.jit.script(self.to_inference_model())
-        kwargs["dynamo"] = False
         torch.onnx.export(
             model,
-            [x, tta_level],
+            (x, tta_level),
             f,
             input_names=["x", "tta_level"],
             output_names=["y"],
@@ -115,6 +116,8 @@ class ONNXTTASplit(I2IBaseModel):
                 "x": {0: "input_batch_size", 2: "input_height", 3: "input_width"},
                 "y": {0: "batch_size", 2: "height", 3: "width"},
             },
+            dynamo=False,
+            external_data=False,
             **kwargs,
         )
 
@@ -138,10 +141,9 @@ class ONNXTTAMerge(I2IBaseModel):
         x = torch.rand([2, 3, 256, 256], dtype=torch.float32)
         tta_level = torch.tensor(2, dtype=torch.int64)
         model = torch.jit.script(self.to_inference_model())
-        kwargs["dynamo"] = False
         torch.onnx.export(
             model,
-            [x, tta_level],
+            (x, tta_level),
             f,
             input_names=["x", "tta_level"],
             output_names=["y"],
@@ -149,6 +151,8 @@ class ONNXTTAMerge(I2IBaseModel):
                 "x": {0: "input_batch_size", 2: "input_height", 3: "input_width"},
                 "y": {0: "batch_size", 2: "height", 3: "width"},
             },
+            dynamo=False,
+            external_data=False,
             **kwargs,
         )
 
@@ -174,14 +178,15 @@ class ONNXCreateSeamBlendingFilter(I2IBaseModel):
         offset = torch.tensor(16, dtype=torch.int64)
         tile_size = torch.tensor(64, dtype=torch.int64)
         model = torch.jit.script(self.to_inference_model())
-        kwargs["dynamo"] = False
         torch.onnx.export(
             model,
-            [scale, offset, tile_size],
+            (scale, offset, tile_size),
             f,
             input_names=["scale", "offset", "tile_size"],
             output_names=["y"],
             dynamic_axes={"y": {0: "channels", 1: "height", 2: "width"}},
+            dynamo=False,
+            external_data=False,
             **kwargs,
         )
 
@@ -227,10 +232,9 @@ class ONNXAlphaBorderPadding(nn.Module):
         alpha = torch.zeros([1, 256, 256], dtype=torch.float32)
         offset = torch.tensor(16, dtype=torch.int64)
         model = torch.jit.script(self.to_inference_model())
-        kwargs["dynamo"] = False
         torch.onnx.export(
             model,
-            [rgb, alpha, offset],
+            (rgb, alpha, offset),
             f,
             input_names=["rgb", "alpha", "offset"],
             output_names=["y"],
@@ -239,6 +243,8 @@ class ONNXAlphaBorderPadding(nn.Module):
                 "alpha": {1: "input_height", 2: "input_width"},
                 "y": {1: "height", 2: "width"},
             },
+            dynamo=False,
+            external_data=False,
             **kwargs,
         )
 
@@ -257,10 +263,9 @@ class ONNXScale1x(I2IBaseModel):
     def export_onnx(self, f, **kwargs):
         x = torch.rand([1, 3, 256, 256], dtype=torch.float32)
         model = self.to_inference_model()
-        kwargs["dynamo"] = True
         torch.onnx.export(
             model,
-            x,
+            (x,),
             f,
             input_names=["x"],
             output_names=["y"],
@@ -268,6 +273,8 @@ class ONNXScale1x(I2IBaseModel):
                 "x": {0: "batch_size", 2: "input_height", 3: "input_width"},
                 "y": {0: "batch_size", 2: "height", 3: "width"},
             },
+            dynamo=True,
+            external_data=False,
             **kwargs,
         )
 
@@ -285,10 +292,9 @@ class ONNXResizeBicubic(nn.Module):
         x = torch.rand([1, 3, 256, 256], dtype=torch.float32)
         scale_factor = torch.tensor(0.75, dtype=torch.float32)
         model = torch.jit.script(self.eval())
-        kwargs["dynamo"] = False
         torch.onnx.export(
             model,
-            [x, scale_factor],
+            (x, scale_factor),
             f,
             input_names=["x", "scale_factor"],
             output_names=["y"],
@@ -296,6 +302,8 @@ class ONNXResizeBicubic(nn.Module):
                 "x": {0: "batch_size", 1: "channels", 2: "input_height", 3: "input_width"},
                 "y": {0: "batch_size", 1: "channels", 2: "height", 3: "width"},
             },
+            dynamo=True,
+            external_data=False,
             **kwargs,
         )
         patch_resize_antialias(f, index=0)
