@@ -28,10 +28,11 @@ class ONNXReflectionPadding(I2IBaseModel):
         var pad = new ort.Tensor('int64', BigInt64Array.from([offset]), []);
         var out = await ses.run({"x": x, "left": pad, "right": pad, "top": pad, "bottom": pad});
         """
-        x = torch.rand([1, 3, 256, 256], dtype=torch.float32)
+        x = torch.rand((2, 3, 256, 256), dtype=torch.float32)
         pad = torch.tensor(16, dtype=torch.int64)
         model = torch.jit.script(self.to_inference_model())
         # ScriptModule requires dynamo=False
+        kwargs = dict(dynamo=False, external_data=False) | kwargs
         torch.onnx.export(
             model,
             (x, pad, pad, pad, pad),
@@ -42,8 +43,6 @@ class ONNXReflectionPadding(I2IBaseModel):
                 "x": {0: "batch_size", 2: "input_height", 3: "input_width"},
                 "y": {0: "batch_size", 2: "height", 3: "width"},
             },
-            dynamo=False,
-            external_data=False,
             **kwargs,
         )
 
@@ -58,9 +57,10 @@ class ONNXReplicationPadding(I2IBaseModel):
         return F.pad(x, (int(left), int(right), int(top), int(bottom)), mode="replicate")
 
     def export_onnx(self, f, **kwargs):
-        x = torch.rand([1, 3, 256, 256], dtype=torch.float32)
+        x = torch.rand((2, 3, 256, 256), dtype=torch.float32)
         pad = torch.tensor(16, dtype=torch.int64)
         model = torch.jit.script(self.to_inference_model())
+        kwargs = dict(dynamo=False, external_data=False) | kwargs
         torch.onnx.export(
             model,
             (x, pad, pad, pad, pad),
@@ -71,8 +71,6 @@ class ONNXReplicationPadding(I2IBaseModel):
                 "x": {0: "batch_size", 2: "input_height", 3: "input_width"},
                 "y": {0: "batch_size", 2: "height", 3: "width"},
             },
-            dynamo=False,
-            external_data=False,
             **kwargs,
         )
 
@@ -103,9 +101,10 @@ class ONNXTTASplit(I2IBaseModel):
         return x
 
     def export_onnx(self, f, **kwargs):
-        x = torch.rand([1, 3, 256, 256], dtype=torch.float32)
+        x = torch.rand((2, 3, 256, 256), dtype=torch.float32)
         tta_level = torch.tensor(2, dtype=torch.int64)
         model = torch.jit.script(self.to_inference_model())
+        kwargs = dict(dynamo=False, external_data=False) | kwargs
         torch.onnx.export(
             model,
             (x, tta_level),
@@ -116,8 +115,6 @@ class ONNXTTASplit(I2IBaseModel):
                 "x": {0: "input_batch_size", 2: "input_height", 3: "input_width"},
                 "y": {0: "batch_size", 2: "height", 3: "width"},
             },
-            dynamo=False,
-            external_data=False,
             **kwargs,
         )
 
@@ -138,9 +135,10 @@ class ONNXTTAMerge(I2IBaseModel):
         return x
 
     def export_onnx(self, f, **kwargs):
-        x = torch.rand([2, 3, 256, 256], dtype=torch.float32)
+        x = torch.rand((2, 3, 256, 256), dtype=torch.float32)
         tta_level = torch.tensor(2, dtype=torch.int64)
         model = torch.jit.script(self.to_inference_model())
+        kwargs = dict(dynamo=False, external_data=False) | kwargs
         torch.onnx.export(
             model,
             (x, tta_level),
@@ -151,8 +149,6 @@ class ONNXTTAMerge(I2IBaseModel):
                 "x": {0: "input_batch_size", 2: "input_height", 3: "input_width"},
                 "y": {0: "batch_size", 2: "height", 3: "width"},
             },
-            dynamo=False,
-            external_data=False,
             **kwargs,
         )
 
@@ -178,6 +174,7 @@ class ONNXCreateSeamBlendingFilter(I2IBaseModel):
         offset = torch.tensor(16, dtype=torch.int64)
         tile_size = torch.tensor(64, dtype=torch.int64)
         model = torch.jit.script(self.to_inference_model())
+        kwargs = dict(dynamo=False, external_data=False) | kwargs
         torch.onnx.export(
             model,
             (scale, offset, tile_size),
@@ -185,8 +182,6 @@ class ONNXCreateSeamBlendingFilter(I2IBaseModel):
             input_names=["scale", "offset", "tile_size"],
             output_names=["y"],
             dynamic_axes={"y": {0: "channels", 1: "height", 2: "width"}},
-            dynamo=False,
-            external_data=False,
             **kwargs,
         )
 
@@ -228,10 +223,11 @@ class ONNXAlphaBorderPadding(nn.Module):
         return net
 
     def export_onnx(self, f, **kwargs):
-        rgb = torch.zeros([3, 256, 256], dtype=torch.float32)
-        alpha = torch.zeros([1, 256, 256], dtype=torch.float32)
+        rgb = torch.zeros((3, 256, 256), dtype=torch.float32)
+        alpha = torch.zeros((1, 256, 256), dtype=torch.float32)
         offset = torch.tensor(16, dtype=torch.int64)
         model = torch.jit.script(self.to_inference_model())
+        kwargs = dict(dynamo=False, external_data=False) | kwargs
         torch.onnx.export(
             model,
             (rgb, alpha, offset),
@@ -243,8 +239,6 @@ class ONNXAlphaBorderPadding(nn.Module):
                 "alpha": {1: "input_height", 2: "input_width"},
                 "y": {1: "height", 2: "width"},
             },
-            dynamo=False,
-            external_data=False,
             **kwargs,
         )
 
@@ -261,8 +255,9 @@ class ONNXScale1x(I2IBaseModel):
         return x[:, :, p:-p, p:-p]
 
     def export_onnx(self, f, **kwargs):
-        x = torch.rand([1, 3, 256, 256], dtype=torch.float32)
+        x = torch.rand((2, 3, 256, 256), dtype=torch.float32)
         model = self.to_inference_model()
+        kwargs = dict(dynamo=True, external_data=False) | kwargs
         torch.onnx.export(
             model,
             (x,),
@@ -273,8 +268,6 @@ class ONNXScale1x(I2IBaseModel):
                 "x": {0: "batch_size", 2: "input_height", 3: "input_width"},
                 "y": {0: "batch_size", 2: "height", 3: "width"},
             },
-            dynamo=True,
-            external_data=False,
             **kwargs,
         )
 
@@ -289,9 +282,10 @@ class ONNXResizeBicubic(nn.Module):
 
     def export_onnx(self, f, **kwargs):
         kwargs["opset_version"] = 18
-        x = torch.rand([1, 3, 256, 256], dtype=torch.float32)
+        x = torch.rand((2, 3, 256, 256), dtype=torch.float32)
         scale_factor = torch.tensor(0.75, dtype=torch.float32)
         model = torch.jit.script(self.eval())
+        kwargs = dict(dynamo=True, external_data=False) | kwargs
         torch.onnx.export(
             model,
             (x, scale_factor),
@@ -302,8 +296,6 @@ class ONNXResizeBicubic(nn.Module):
                 "x": {0: "batch_size", 1: "channels", 2: "input_height", 3: "input_width"},
                 "y": {0: "batch_size", 1: "channels", 2: "height", 3: "width"},
             },
-            dynamo=True,
-            external_data=False,
             **kwargs,
         )
         patch_resize_antialias(f, index=0)
@@ -391,7 +383,7 @@ def main():
         test_onnx_model(
             ONNXReflectionPadding(),
             [
-                torch.rand([1, 3, 256, 256]),
+                torch.rand((1, 3, 256, 256)),
                 torch.tensor(16, dtype=torch.int64),
                 torch.tensor(16, dtype=torch.int64),
                 torch.tensor(16, dtype=torch.int64),
@@ -404,7 +396,7 @@ def main():
         test_onnx_model(
             ONNXReplicationPadding(),
             [
-                torch.rand([1, 3, 256, 256]),
+                torch.rand((1, 3, 256, 256)),
                 torch.tensor(16, dtype=torch.int64),
                 torch.tensor(16, dtype=torch.int64),
                 torch.tensor(16, dtype=torch.int64),
@@ -415,7 +407,7 @@ def main():
 
     if args.model == "tta_split" or args.model is None:
         test_onnx_model(
-            ONNXTTASplit(), [torch.rand([1, 3, 256, 256]), torch.tensor(2, dtype=torch.int64)], ["x", "tta_level"]
+            ONNXTTASplit(), [torch.rand((1, 3, 256, 256)), torch.tensor(2, dtype=torch.int64)], ["x", "tta_level"]
         )
 
     if args.model == "tta_merge" or args.model is None:
@@ -437,17 +429,17 @@ def main():
     if args.model == "alpha_border" or args.model is None:
         test_onnx_model(
             ONNXAlphaBorderPadding(),
-            [torch.zeros([3, 256, 256]), torch.zeros([1, 256, 256]), torch.tensor(16, dtype=torch.int64)],
+            [torch.zeros([3, 256, 256]), torch.zeros((1, 256, 256)), torch.tensor(16, dtype=torch.int64)],
             ["rgb", "alpha", "offset"],
         )
 
     if args.model == "scale1x" or args.model is None:
-        test_onnx_model(ONNXScale1x(offset=16), [torch.rand([1, 3, 256, 256])], ["x"])
+        test_onnx_model(ONNXScale1x(offset=16), [torch.rand((1, 3, 256, 256))], ["x"])
 
     if args.model == "resize_bicubic" or args.model is None:
         test_onnx_model(
             ONNXResizeBicubic(),
-            [torch.rand([1, 3, 256, 256]), torch.tensor(0.75, dtype=torch.float32)],
+            [torch.rand((1, 3, 256, 256)), torch.tensor(0.75, dtype=torch.float32)],
             ["x", "scale_factor"],
         )
 
