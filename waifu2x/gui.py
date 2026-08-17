@@ -15,8 +15,7 @@ import wx.lib.agw.persist as persist
 from .ui_utils import (
     create_parser, set_state_args, waifu2x_main,
     is_video, is_output_dir, is_text, make_output_filename,
-    MODEL_DIR, DEFAULT_ART_MODEL_DIR,
-    DEFAULT_ART_SCAN_MODEL_DIR, DEFAULT_PHOTO_MODEL_DIR)
+    MODEL_DIR)
 from nunif.device import mps_is_available, xpu_is_available
 from nunif.utils.image_loader import IMG_EXTENSIONS as LOADER_SUPPORTED_EXTENSIONS
 from nunif.utils.video import (
@@ -47,6 +46,52 @@ VIDEO_EXTENSIONS = extension_list_to_wildcard(KNOWN_VIDEO_EXTENSIONS)
 CONFIG_DIR = ensure_home_dir("waifu2x", path.join(path.dirname(__file__), "..", "tmp"))
 CONFIG_PATH = path.join(CONFIG_DIR, "waifu2x-gui.cfg")
 os.makedirs(CONFIG_DIR, exist_ok=True)
+
+
+MODEL_INFO = {
+    "swin_unet_v3/art": {
+        "model_dir": path.join(MODEL_DIR, "swin_unet_v3", "art"),
+        "TTA": True,
+        "4x": False,
+        "comment": "Anime Style Art, Cliparts",
+    },
+    "swin_unet/art": {
+        "model_dir": path.join(MODEL_DIR, "swin_unet", "art"),
+        "TTA": True,
+        "4x": True,
+        "comment": "Anime Style Art, Cliparts",
+    },
+    "swin_unet/art_scan": {
+        "model_dir": path.join(MODEL_DIR, "swin_unet", "art_scan"),
+        "TTA": False,
+        "4x": True,
+        "comment": "Manga, Anime Screencaps, Anime Style Art for more clear results",
+    },
+    "swin_unet/photo": {
+        "model_dir": path.join(MODEL_DIR, "swin_unet", "photo"),
+        "TTA": False,
+        "4x": True,
+        "comment": "Photograph",
+    },
+    "cunet/art": {
+        "model_dir": path.join(MODEL_DIR, "cunet", "art"),
+        "TTA": False,
+        "4x": False,
+        "comment": "Old version, Art model, fast",
+    },
+    "upconv_7/art": {
+        "model_dir": path.join(MODEL_DIR, "upconv_7", "art"),
+        "TTA": True,
+        "4x": False,
+        "comment": "Old version, Art model, veryfast",
+    },
+    "upconv_7/photo": {
+        "model_dir": path.join(MODEL_DIR, "upconv_7", "photo"),
+        "TTA": True,
+        "4x": False,
+        "comment": "Old version, Photo model, veryfast",
+    },
+}
 
 
 LAYOUT_DEBUG = False
@@ -135,27 +180,15 @@ class MainFrame(wx.Frame):
         # Superresolution settings
         # NOTE: term is translated with webgen locale. See WEBGEN_TERMS in ./locales.py
         self.grp_sr = wx.StaticBox(self.pnl_options, label=T("Superresolution"))
-        self.opt_model = wx.RadioBox(
-            self.grp_sr, label=T("Model"),
-            choices=[T("artwork"), T("artwork") + "/" + T("scan"),
-                     T("photo"), "cunet/art", "upconv_7/art", "upconv_7/photo"],
-            majorDimension=3, name="opt_model")
-        self.model_dirs = [
-            DEFAULT_ART_MODEL_DIR, DEFAULT_ART_SCAN_MODEL_DIR, DEFAULT_PHOTO_MODEL_DIR,
-            path.join(MODEL_DIR, "cunet", "art"),
-            path.join(MODEL_DIR, "upconv_7", "art"),
-            path.join(MODEL_DIR, "upconv_7", "photo"),
-        ]
-        self.model_tta_support = [True, False, False, True, True, True]
-        self.model_4x_support = [True, True, True, False, False, False]
-
-        self.opt_model.SetSelection(0)
-        self.opt_model.SetItemToolTip(0, T("Anime Style Art, Cliparts"))
-        self.opt_model.SetItemToolTip(1, T("Manga, Anime Screencaps, Anime Style Art for more clear results"))
-        self.opt_model.SetItemToolTip(2, T("Photograph"))
-        self.opt_model.SetItemToolTip(3, T("Old version, Art model, fast"))
-        self.opt_model.SetItemToolTip(4, T("Old version, Art model, veryfast"))
-        self.opt_model.SetItemToolTip(5, T("Old version, Photo model, veryfast"))
+        self.lbl_model = wx.StaticText(self.grp_sr, label=T("Model"))
+        self.cbo_model = wx.ComboBox(
+            self.grp_sr,
+            choices=list(MODEL_INFO.keys()),
+            size=self.FromDIP((200, -1)),
+            name="cbo_model")
+        self.cbo_model.SetEditable(False)
+        self.cbo_model.SetSelection(0)
+        self.lbl_model_comment = wx.StaticText(self.grp_sr, label="")
 
         self.opt_noise_level = wx.RadioBox(
             self.grp_sr, label=T("noise_reduction"),
@@ -169,10 +202,14 @@ class MainFrame(wx.Frame):
             name="opt_upscaling")
         self.opt_upscaling.SetSelection(1)
 
-        layout = wx.BoxSizer(wx.VERTICAL)
-        layout.Add(self.opt_model, 0, wx.ALL | wx.EXPAND, border=4)
-        layout.Add(self.opt_upscaling, 0, wx.ALL | wx.EXPAND, border=4)
-        layout.Add(self.opt_noise_level, 0, wx.ALL | wx.EXPAND, border=4)
+        layout = wx.GridBagSizer(vgap=4, hgap=4)
+        layout.SetEmptyCellSize((0, 0))
+        layout.Add(self.lbl_model, (0, 0), (1, 1), flag=wx.ALIGN_CENTER_VERTICAL)
+        layout.Add(self.cbo_model, (0, 1), (1, 1), flag=wx.EXPAND)
+        layout.Add(self.lbl_model_comment, (0, 2), (1, 1), flag=wx.ALIGN_CENTER_VERTICAL)
+        layout.Add(self.opt_upscaling, (1, 0), (1, 3), flag=wx.ALL | wx.EXPAND)
+        layout.Add(self.opt_noise_level, (2, 0), (1, 3), flag=wx.ALL | wx.EXPAND)
+
         sizer_sr = wx.StaticBoxSizer(self.grp_sr, wx.VERTICAL)
         sizer_sr.Add(layout, 1, wx.ALL | wx.EXPAND, 8)
 
@@ -331,7 +368,7 @@ class MainFrame(wx.Frame):
         self.pnl_file.bind_input_path_changed(self.on_text_changed_txt_input)
         self.pnl_file.bind_output_path_changed(self.on_text_changed_txt_output)
 
-        self.opt_model.Bind(wx.EVT_RADIOBOX, self.on_selected_index_changed_opt_model)
+        self.cbo_model.Bind(wx.EVT_TEXT, self.on_selected_index_changed_cbo_model)
         self.opt_upscaling.Bind(wx.EVT_RADIOBOX, self.on_selected_index_changed_opt_upscaling)
 
         self.btn_start.Bind(wx.EVT_BUTTON, self.on_click_btn_start)
@@ -368,6 +405,7 @@ class MainFrame(wx.Frame):
         persistent_manager_restore_all(self.persistence_manager)
 
         self.update_start_button_state()
+        self.update_model_comment()
         self.update_upscaling_state()
         self.update_noise_level_state()
         self.update_input_option_state()
@@ -383,7 +421,7 @@ class MainFrame(wx.Frame):
         return True
 
     def update_upscaling_state(self):
-        if self.model_4x_support[self.opt_model.GetSelection()]:
+        if MODEL_INFO[self.cbo_model.GetValue()]["4x"]:
             self.opt_upscaling.EnableItem(2, True)
         else:
             if self.opt_upscaling.GetSelection() == 2:
@@ -422,7 +460,12 @@ class MainFrame(wx.Frame):
         self.txt_start_time.SetValue("00:00:00")
         self.txt_end_time.SetValue("00:00:00")
 
-    def on_selected_index_changed_opt_model(self, event):
+    def update_model_comment(self):
+        comment = T(MODEL_INFO[self.cbo_model.GetValue()].get("comment", ""))
+        self.lbl_model_comment.SetLabel(comment)
+
+    def on_selected_index_changed_cbo_model(self, event):
+        self.update_model_comment()
         self.update_upscaling_state()
 
     def on_selected_index_changed_opt_upscaling(self, event):
@@ -521,12 +564,12 @@ class MainFrame(wx.Frame):
         recursive = path.isdir(input_path) and self.chk_recursive.GetValue()
         start_time = self.txt_start_time.GetValue() if self.chk_start_time.GetValue() else None
         end_time = self.txt_end_time.GetValue() if self.chk_end_time.GetValue() else None
-        tta = self.chk_tta.GetValue() and self.model_tta_support[self.opt_model.GetSelection()]
+        tta = self.chk_tta.GetValue() and MODEL_INFO[self.cbo_model.GetValue()]["TTA"]
 
         parser.set_defaults(
             input=input_path,
             output=self.pnl_file.output_path,
-            model_dir=self.model_dirs[self.opt_model.GetSelection()],
+            model_dir=MODEL_INFO[self.cbo_model.GetValue()]["model_dir"],
             noise_level=noise_level,
             method=method,
             yes=True,  # TODO: remove this
