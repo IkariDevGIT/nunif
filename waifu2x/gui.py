@@ -22,8 +22,9 @@ from .ui_utils import (
     make_output_filename,
     MODEL_DIR,
 )
-from nunif.device import mps_is_available, xpu_is_available
+from nunif.device import mps_is_available, xpu_is_available, create_device
 from nunif.utils.image_loader import IMG_EXTENSIONS as LOADER_SUPPORTED_EXTENSIONS
+from nunif.models.utils import check_compile_support
 from nunif.utils.video import (
     VIDEO_EXTENSIONS as KNOWN_VIDEO_EXTENSIONS,
     has_nvenc,
@@ -89,7 +90,7 @@ MODEL_INFO = {
     },
     "cunet/art": {
         "model_dir": path.join(MODEL_DIR, "cunet", "art"),
-        "TTA": False,
+        "TTA": True,
         "4x": False,
         "comment": "Old version, Art model, fast",
     },
@@ -336,6 +337,10 @@ class MainFrame(wx.Frame):
         self.chk_amp = wx.CheckBox(self.grp_processor, label=T("FP16 (fast)"), name="chk_amp")
         self.chk_amp.SetValue(True)
 
+        self.chk_compile = wx.CheckBox(self.grp_processor, label=T("torch.compile"), name="chk_compile")
+        self.chk_compile.SetToolTip(T("Enable model compiling"))
+        self.chk_compile.SetValue(False)
+
         layout = wx.GridBagSizer(vgap=4, hgap=4)
         layout.Add(self.lbl_device, (0, 0), flag=wx.ALIGN_CENTER_VERTICAL)
         layout.Add(self.cbo_device, (0, 1), flag=wx.EXPAND)
@@ -345,6 +350,7 @@ class MainFrame(wx.Frame):
         layout.Add(self.cbo_batch_size, (2, 1), flag=wx.EXPAND)
         layout.Add(self.chk_tta, (3, 0), flag=wx.EXPAND)
         layout.Add(self.chk_amp, (3, 1), flag=wx.EXPAND)
+        layout.Add(self.chk_compile, (4, 0), flag=wx.EXPAND)
 
         sizer_processor = wx.StaticBoxSizer(self.grp_processor, wx.VERTICAL)
         sizer_processor.Add(layout, 1, wx.ALL | wx.EXPAND, 4)
@@ -391,6 +397,9 @@ class MainFrame(wx.Frame):
         self.cbo_model.Bind(wx.EVT_TEXT, self.on_selected_index_changed_cbo_model)
         self.opt_upscaling.Bind(wx.EVT_RADIOBOX, self.on_selected_index_changed_opt_upscaling)
 
+        self.cbo_device.Bind(wx.EVT_TEXT, self.on_selected_index_changed_cbo_device)
+        self.chk_compile.Bind(wx.EVT_CHECKBOX, self.update_compile)
+
         self.btn_start.Bind(wx.EVT_BUTTON, self.on_click_btn_start)
         self.btn_cancel.Bind(wx.EVT_BUTTON, self.on_click_btn_cancel)
 
@@ -428,12 +437,15 @@ class MainFrame(wx.Frame):
         for control in editable_comboboxes:
             persistent_manager_register(self.persistence_manager, control, EditableComboBoxPersistentHandler)
         persistent_manager_restore_all(self.persistence_manager)
+        self.update_controls()
 
+    def update_controls(self):
         self.update_start_button_state()
         self.update_model_comment()
         self.update_upscaling_state()
         self.update_noise_level_state()
         self.update_input_option_state()
+        self.update_compile()
         self.grp_video.update_controls()
 
     def on_close(self, event):
@@ -510,6 +522,21 @@ class MainFrame(wx.Frame):
 
     def on_text_changed_txt_output(self, event):
         self.update_start_button_state()
+
+    def on_selected_index_changed_cbo_device(self, event):
+        self.update_compile()
+
+    def update_compile(self, *args, **kwargs):
+        device_id = int(self.cbo_device.GetClientData(self.cbo_device.GetSelection()))
+        if device_id == -2:
+            # currently "All CUDA" does not support compile
+            self.chk_compile.SetValue(False)
+        else:
+            # check compiler support
+            if self.chk_compile.IsChecked():
+                device = create_device(device_id)
+                if not check_compile_support(device):
+                    self.chk_compile.SetValue(False)
 
     def confirm_overwrite(self, args):
         input_path = self.pnl_file.input_path
@@ -623,6 +650,7 @@ class MainFrame(wx.Frame):
             tile_size=int(self.cbo_tile_size.GetValue()),
             tta=tta,
             disable_amp=not self.chk_amp.GetValue(),
+            compile=self.chk_compile.IsEnabled() and self.chk_compile.IsChecked(),
             resume=resume,
             recursive=recursive,
             start_time=start_time,
