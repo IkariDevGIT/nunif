@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from nunif.models import I2IBaseModel, register_model
+from nunif.models import I2IBaseModel, register_model, register_model_factory
 from nunif.modules.attention import WindowMHA2dV2
 from nunif.modules.compile_wrapper import conditional_compile
 from nunif.modules.glu import align_up, swiglu
@@ -170,6 +170,7 @@ class SwinUNetV3Base(nn.Module):
         decoder_dim=64,
         scale_factor=2,
         head_dim=32,
+        num_encoder_layers=2,
         num_middle_layers=8,
         num_decoder_layers=3,
     ):
@@ -184,7 +185,7 @@ class SwinUNetV3Base(nn.Module):
             nn.SiLU(),
             nn.Conv2d(C1, C1, kernel_size=3, stride=1, padding=0),
         )
-        self.res1_1 = ResBlocks(C1, num_layers=2)
+        self.res1_1 = ResBlocks(C1, num_layers=num_encoder_layers)
         self.down1 = PatchDown(C1, C2)
         self.wac2 = WACBlocks(
             C2, window_size=8, num_heads=compute_num_heads(C2, head_dim), num_layers=num_middle_layers
@@ -278,6 +279,7 @@ class SwinUNet4xV3(I2IBaseModel):
         middle_dim=192,
         decoder_dim=128,
         head_dim=32,
+        num_encoder_layers=2,
         num_middle_layers=8,
         num_decoder_layers=3,
         **kwargs,
@@ -294,6 +296,7 @@ class SwinUNet4xV3(I2IBaseModel):
             decoder_dim=decoder_dim,
             scale_factor=4,
             head_dim=head_dim,
+            num_encoder_layers=num_encoder_layers,
             num_middle_layers=num_middle_layers,
             num_decoder_layers=num_decoder_layers,
         )
@@ -305,6 +308,21 @@ class SwinUNet4xV3(I2IBaseModel):
             return z
         else:
             return torch.clamp(z, 0.0, 1.0)
+
+
+register_model_factory(
+    "waifu2x.swin_unet_v3_4x_medium",
+    lambda **kwargs: SwinUNet4xV3(
+        encoder_dim=96,
+        middle_dim=384,
+        decoder_dim=192,
+        head_dim=64,
+        num_encoder_layers=2,
+        num_middle_layers=16,
+        num_decoder_layers=4,
+        **kwargs,
+    ),
+)
 
 
 def _bench(name, compile):
@@ -343,3 +361,4 @@ if __name__ == "__main__":
     _bench("waifu2x.swin_unet_v3_1x", enable_full_compile)
     _bench("waifu2x.swin_unet_v3_2x", enable_full_compile)
     _bench("waifu2x.swin_unet_v3_4x", enable_full_compile)
+    _bench("waifu2x.swin_unet_v3_4x_medium", enable_full_compile)
