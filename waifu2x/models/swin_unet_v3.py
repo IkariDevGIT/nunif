@@ -62,12 +62,12 @@ class ResBlocks(nn.Module):
 
 
 class WACBlock(nn.Module):
-    def __init__(self, in_channels, num_heads, window_size, mlp_ratio=3, shift=False):
+    def __init__(self, in_channels, num_heads, window_size, mlp_ratio=3, shift=False, gate=False):
         super(WACBlock, self).__init__()
         self.window_size = window_size if isinstance(window_size, (tuple, list)) else (window_size, window_size)
         self.norm1 = RMSNorm1(in_channels)
         self.rope = RoPE2d(in_channels // num_heads, size=window_size, norm_layer=RMSNorm1)
-        self.mha = WindowMHA2dV2(in_channels, num_heads, window_size=window_size, shift=shift)
+        self.mha = WindowMHA2dV2(in_channels, num_heads, window_size=window_size, shift=shift, gate=gate)
         self.mlp = SwiGLUConv2d(in_channels, mlp_ratio=mlp_ratio)
 
     def forward(self, x):
@@ -78,7 +78,7 @@ class WACBlock(nn.Module):
 
 
 class WACBlocks(nn.Module):
-    def __init__(self, in_channels, num_heads, window_size, num_layers, mlp_ratio=3, shift=None):
+    def __init__(self, in_channels, num_heads, window_size, num_layers, mlp_ratio=3, shift=None, gate=False):
         assert num_layers % 2 == 0
         super(WACBlocks, self).__init__()
         if isinstance(window_size, int):
@@ -96,6 +96,7 @@ class WACBlocks(nn.Module):
                     num_heads=num_heads,
                     mlp_ratio=mlp_ratio,
                     shift=shift[i],
+                    gate=gate,
                 )
                 for i in range(num_layers)
             ]
@@ -173,6 +174,7 @@ class SwinUNetV3Base(nn.Module):
         num_encoder_layers=2,
         num_middle_layers=8,
         num_decoder_layers=3,
+        gate=False,
     ):
         super(SwinUNetV3Base, self).__init__()
         assert scale_factor in {1, 2, 4}
@@ -188,7 +190,11 @@ class SwinUNetV3Base(nn.Module):
         self.res1_1 = ResBlocks(C1, num_layers=num_encoder_layers)
         self.down1 = PatchDown(C1, C2)
         self.wac2 = WACBlocks(
-            C2, window_size=8, num_heads=compute_num_heads(C2, head_dim), num_layers=num_middle_layers
+            C2,
+            window_size=8,
+            num_heads=compute_num_heads(C2, head_dim),
+            num_layers=num_middle_layers,
+            gate=gate,
         )
         self.up1 = PatchUp(C1 + C2, C3)
         self.res1_2 = ResBlocks(C3, num_layers=num_decoder_layers)
@@ -223,7 +229,9 @@ def tile_size_validator(size):
 class SwinUNet1xV3(I2IBaseModel):
     name = "waifu2x.swin_unet_v3_1x"
 
-    def __init__(self, in_channels=3, out_channels=3, encoder_dim=64, middle_dim=128, decoder_dim=64, **kwargs):
+    def __init__(
+        self, in_channels=3, out_channels=3, encoder_dim=64, middle_dim=128, decoder_dim=64, gate=False, **kwargs
+    ):
         super(SwinUNet1xV3, self).__init__(locals(), scale=1, offset=8, in_channels=in_channels, blend_size=4)
         self.register_tile_size_validator(tile_size_validator)
         self.unet = SwinUNetV3Base(
@@ -233,6 +241,7 @@ class SwinUNet1xV3(I2IBaseModel):
             middle_dim=middle_dim,
             decoder_dim=decoder_dim,
             scale_factor=1,
+            gate=gate,
         )
 
     def forward(self, x):
@@ -247,7 +256,9 @@ class SwinUNet1xV3(I2IBaseModel):
 class SwinUNet2xV3(I2IBaseModel):
     name = "waifu2x.swin_unet_v3_2x"
 
-    def __init__(self, in_channels=3, out_channels=3, encoder_dim=64, middle_dim=128, decoder_dim=96, **kwargs):
+    def __init__(
+        self, in_channels=3, out_channels=3, encoder_dim=64, middle_dim=128, decoder_dim=96, gate=False, **kwargs
+    ):
         super(SwinUNet2xV3, self).__init__(locals(), scale=2, offset=16, in_channels=in_channels, blend_size=8)
         self.register_tile_size_validator(tile_size_validator)
         self.unet = SwinUNetV3Base(
@@ -257,6 +268,7 @@ class SwinUNet2xV3(I2IBaseModel):
             middle_dim=middle_dim,
             decoder_dim=decoder_dim,
             scale_factor=2,
+            gate=gate,
         )
 
     def forward(self, x):
@@ -282,6 +294,7 @@ class SwinUNet4xV3(I2IBaseModel):
         num_encoder_layers=2,
         num_middle_layers=8,
         num_decoder_layers=3,
+        gate=True,
         **kwargs,
     ):
         super(SwinUNet4xV3, self).__init__(locals(), scale=4, offset=32, in_channels=in_channels, blend_size=16)
@@ -299,6 +312,7 @@ class SwinUNet4xV3(I2IBaseModel):
             num_encoder_layers=num_encoder_layers,
             num_middle_layers=num_middle_layers,
             num_decoder_layers=num_decoder_layers,
+            gate=gate,
         )
 
     def forward(self, x):
@@ -308,6 +322,10 @@ class SwinUNet4xV3(I2IBaseModel):
             return z
         else:
             return torch.clamp(z, 0.0, 1.0)
+
+
+register_model_factory("waifu2x.swin_unet_v3_1x_gated", lambda **kwargs: SwinUNet1xV3(gate=True, **kwargs))
+register_model_factory("waifu2x.swin_unet_v3_2x_gated", lambda **kwargs: SwinUNet2xV3(gate=True, **kwargs))
 
 
 register_model_factory(
