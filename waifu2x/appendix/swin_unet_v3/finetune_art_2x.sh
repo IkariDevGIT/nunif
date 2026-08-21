@@ -38,5 +38,5 @@ cp ${OUTPUT_DIR}/noise1_scale2x.pth ${OUTPUT_DIR}/noise1_scale2x.1.pth
 DEBUG=1 python train.py waifu2x --method noise_scale --noise-level 0 ${OPTIONS} ${STEP_OPTION} ${LOSS} --checkpoint-file ${OUTPUT_DIR}/noise0_scale2x.0.pth
 cp ${OUTPUT_DIR}/noise0_scale2x.pth ${OUTPUT_DIR}/noise0_scale2x.1.pth
 
-DEBUG=1 python train.py waifu2x --method scale ${OPTIONS} ${STEP_OPTION} ${LOSS} --checkpoint-file ${OUTPUT_DIR}/scale2x.1.pth
+DEBUG=1 python train.py waifu2x --method scale ${OPTIONS} ${STEP_OPTION} ${LOSS} --checkpoint-file ${OUTPUT_DIR}/scale2x.0.pth
 cp ${OUTPUT_DIR}/scale2x.pth ${OUTPUT_DIR}/scale2x.1.pth
