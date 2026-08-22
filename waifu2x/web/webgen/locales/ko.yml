@@ -27,5 +27,6 @@ tta_rule: "`n-pass auto`의 규칙 보기"
 tta_hint: "TTA는 안정적인 품질을 제공하지만 원본 이미지 크기를 제한합니다."
 button_convert: 변환
 button_download: 다운로드
+button_clear: 초기화
 hints:
   - "Firefox에서 이미지를 저장하려면 Ctrl+S를 누르십시오. ‘이미지 저장’ 옵션은 작동하지 않습니다."

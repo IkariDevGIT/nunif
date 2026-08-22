@@ -1,13 +1,17 @@
 import sys
+from abc import ABC, abstractmethod
+
 import torch
 import torch.nn as nn
 from tqdm import tqdm
-from . confusion_matrix import SoftmaxConfusionMatrix
-from .. models.utils import get_model_device
-from .. modules import ClampLoss, LuminanceWeightedLoss, LuminancePSNR, PSNR
-from .. device import autocast
-from abc import ABC, abstractmethod
-from .. logger import logger
+
+from ..device import autocast
+from ..logger import logger
+from ..models.utils import get_model_device
+from ..modules.channel_weighted_loss import LuminanceWeightedLoss
+from ..modules.clamp_loss import ClampLoss
+from ..modules.psnr import LuminancePSNRPerImage, PSNRPerImage
+from .confusion_matrix import SoftmaxConfusionMatrix
 
 
 class BaseEnv(ABC):
@@ -67,9 +71,8 @@ class BaseEnv(ABC):
                     grad_scaler.unscale_(optimizer)
                     for group in optimizer.param_groups:
                         torch.nn.utils.clip_grad_norm_(
-                            group["params"],
-                            max_norm=self.trainer.args.clip_grad_norm,
-                            error_if_nonfinite=False)
+                            group["params"], max_norm=self.trainer.args.clip_grad_norm, error_if_nonfinite=False
+                        )
                 grad_scaler.step(optimizer)
                 optimizer.zero_grad()
             grad_scaler.update()
@@ -78,9 +81,7 @@ class BaseEnv(ABC):
                 if self.trainer.args.clip_grad_norm > 0:
                     for group in optimizer.param_groups:
                         torch.nn.utils.clip_grad_norm_(
-                            group["params"],
-                            max_norm=self.trainer.args.clip_grad_norm,
-                            error_if_nonfinite=False
+                            group["params"], max_norm=self.trainer.args.clip_grad_norm, error_if_nonfinite=False
                         )
                 optimizer.step()
                 optimizer.zero_grad()
@@ -90,16 +91,18 @@ class BaseEnv(ABC):
             if len(grad_scalers) == 1:
                 grad_scaler = grad_scalers[0]
             else:
-                raise NotImplementedError("More than one grad_scaler found. You need to implement `train_backward_step`.")
+                raise NotImplementedError(
+                    "More than one grad_scaler found. You need to implement `train_backward_step`."
+                )
         else:
             grad_scaler = grad_scalers
         self.backward(loss, grad_scaler)
         if update:
             self.optimizer_step(optimizers, grad_scaler)
 
-    def calculate_adaptive_weight(self, base_loss, second_loss, param,
-                                  grad_scaler, min=1e-6, max=1., mode="norm",
-                                  adaptive_weight=1.0):
+    def calculate_adaptive_weight(
+        self, base_loss, second_loss, param, grad_scaler, min=1e-6, max=1.0, mode="norm", adaptive_weight=1.0
+    ):
         base_loss = grad_scaler.scale(base_loss)
         second_loss = grad_scaler.scale(second_loss * adaptive_weight)
         # ref. taming transformers
@@ -120,11 +123,19 @@ class BaseEnv(ABC):
             second_grad_strength = second_grad_strength / adaptive_weight
         else:
             raise NotImplementedError()
+        # TODO: Remove item() when testing is possible.
         grad_ratio = torch.clamp(base_grad_strength / second_grad_strength, min, max).item()
         if False:
-            print("base", base_grad_strength.item(), "second", second_grad_strength.item(),
-                  "weight", (base_grad_strength / second_grad_strength).item(),
-                  "inv_scale", inv_scale)
+            print(
+                "base",
+                base_grad_strength.item(),
+                "second",
+                second_grad_strength.item(),
+                "weight",
+                (base_grad_strength / second_grad_strength).item(),
+                "inv_scale",
+                inv_scale,
+            )
         return grad_ratio
 
     @abstractmethod
@@ -145,14 +156,21 @@ class BaseEnv(ABC):
         return loss
 
     def to_device(self, input, device=None):
-        device = device or getattr(self, "device")
+        device = torch.device(device or getattr(self, "device"))
+        non_blocking = device.type in {"cuda", "xpu"}
         if torch.is_tensor(input):
-            return input.to(device)
+            return input.to(device, non_blocking=non_blocking)
         if isinstance(input, (tuple, list)):
             new_list = [self.to_device(elm, device) for elm in input]
             return tuple(new_list) if isinstance(input, tuple) else new_list
         # unknown type
         return input
+
+    @staticmethod
+    def to_scalar(tensor_or_scalar):
+        if torch.is_tensor(tensor_or_scalar):
+            return tensor_or_scalar.item()
+        return tensor_or_scalar
 
     def get_eval_model(self):
         return self.trainer.ema_model if self.trainer.args.ema_model else self.model
@@ -160,10 +178,7 @@ class BaseEnv(ABC):
     @staticmethod
     def check_nan(loss):
         losses = loss if isinstance(loss, (list, tuple)) else [loss]
-        for loss in (losses):
-            if torch.is_tensor(loss) and torch.isnan(loss).any().item():
-                return True
-        return False
+        return any(torch.is_tensor(loss) and torch.isnan(loss).any() for loss in losses)
 
     def train(self, loader, optimizers, schedulers, grad_scalers, backward_step=1):
         assert backward_step > 0
@@ -190,8 +205,7 @@ class BaseEnv(ABC):
                     nan_count += 1
                     if nan_count > 100:
                         raise FloatingPointError("loss is NaN over 100 times")
-            self.train_backward_step(loss, optimizers, grad_scalers,
-                                     update=t % backward_step == 0)
+            self.train_backward_step(loss, optimizers, grad_scalers, update=t % backward_step == 0)
             if self.trainer.args.ema_model:
                 if t % backward_step == 0:
                     ema_t += 1
@@ -254,7 +268,10 @@ class SoftmaxEnv(BaseEnv):
         x, y, *_ = data
         model = self.get_eval_model()
         if self.eval_tta:
-            B, TTA, = x.shape[:2]
+            (
+                B,
+                TTA,
+            ) = x.shape[:2]
             x = self.to_device(x)
             x = x.reshape(B * TTA, *x.shape[2:])
             with self.autocast():
@@ -304,12 +321,12 @@ class I2IEnv(BaseEnv):
             z = self.model(x)
             loss = self.criterion(z, y)
         if not torch.isnan(loss):
-            self.sum_loss += loss.item()
+            self.sum_loss += loss.detach()
             self.sum_step += 1
         return loss
 
     def train_end(self):
-        mean_loss = self.sum_loss / self.sum_step
+        mean_loss = self.to_scalar(self.sum_loss / self.sum_step)
         print(f"loss: {mean_loss}")
         return mean_loss
 
@@ -326,10 +343,11 @@ class I2IEnv(BaseEnv):
         with self.autocast():
             z = model(x)
             loss = self.eval_criterion(z, y)
-        self.sum_loss += loss.item()
+        self.sum_loss += loss.detach()
         self.sum_step += 1
 
     def print_eval_result(self, loss, file=sys.stdout):
+        loss = self.to_scalar(loss)
         print(f"loss: {loss}", file=file)
 
     def eval_end(self, file=sys.stdout):
@@ -339,25 +357,29 @@ class I2IEnv(BaseEnv):
 
 
 class RGBPSNREnv(I2IEnv):
-    def __init__(self, model, criterion=None):
+    def __init__(self, model, criterion=None, eval_criterion=None):
         if criterion is None:
             criterion = ClampLoss(nn.HuberLoss(0.3))
-        super().__init__(model, criterion=criterion, eval_criterion=PSNR())
+        if eval_criterion is None:
+            eval_criterion = PSNRPerImage()
+        super().__init__(model, criterion=criterion, eval_criterion=eval_criterion)
 
     def print_eval_result(self, psnr_loss, file=sys.stdout):
         psnr = -psnr_loss
-        print(f"Batch RGB-PSNR: {psnr}", file=file)
+        print(f"RGB-PSNR: {psnr}", file=file)
 
 
 class LuminancePSNREnv(I2IEnv):
-    def __init__(self, model, criterion=None):
+    def __init__(self, model, criterion=None, eval_criterion=None):
         if criterion is None:
             criterion = ClampLoss(LuminanceWeightedLoss(nn.HuberLoss(0.3)))
-        super().__init__(model, criterion=criterion, eval_criterion=LuminancePSNR())
+        if eval_criterion is None:
+            eval_criterion = LuminancePSNRPerImage()
+        super().__init__(model, criterion=criterion, eval_criterion=eval_criterion)
 
     def print_eval_result(self, psnr_loss, file=sys.stdout):
         psnr = -psnr_loss
-        print(f"Batch Y-PSNR: {psnr}", file=file)
+        print(f"Y-PSNR: {psnr}", file=file)
 
 
 class UnsupervisedEnv(BaseEnv):
@@ -386,7 +408,7 @@ class UnsupervisedEnv(BaseEnv):
         with self.autocast():
             z = self.model(x)
             loss = self.criterion(z)
-        self.sum_loss += loss.item()
+        self.sum_loss += loss.detach()
         self.sum_step += 1
         return loss
 
@@ -428,13 +450,13 @@ class RegressionEnv(BaseEnv):
         with self.autocast():
             z = self.model(x)
             loss = self.criterion(z, y)
-        self.sum_loss += loss.item()
+        self.sum_loss += loss.detach()
         self.sum_step += 1
 
         return loss
 
     def train_end(self):
-        loss = self.sum_loss / self.sum_step
+        loss = self.to_scalar(self.sum_loss / self.sum_step)
         print(f"loss: {loss}")
         return loss
 
@@ -452,12 +474,12 @@ class RegressionEnv(BaseEnv):
         with self.autocast():
             z = model(x)
             loss = self.criterion(z, y)
-        self.sum_loss += loss.item()
+        self.sum_loss += loss.detach()
         self.sum_step += 1
 
         return loss
 
     def eval_end(self):
-        loss = self.sum_loss / self.sum_step
+        loss = self.to_scalar(self.sum_loss / self.sum_step)
         print(f"loss: {loss}")
         return loss

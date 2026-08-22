@@ -303,10 +303,14 @@ def save_image(im, filename, format="png",
         # TODO: gamma
         options = {
             "icc_profile": icc_profile,
-            "quality": 95,
+            "quality": 20,
             "method": 4,
             "lossless": True
         }
+        if im.mode in {"I", "I;16"}:
+            # webp does not support 16bit grayscale
+            im = convert_i2l(im)
+
     elif format in {"jpg", "jpeg"}:
         format = "jpeg"  # fix format name
         options = {
@@ -318,6 +322,10 @@ def save_image(im, filename, format="png",
             im = remove_alpha(im, bg_color=bg_color)
             fn = filename if isinstance(filename, str) else "(ByteIO)"
             logger.warning(f"pil_io.save_image: {fn}: alpha channel is removed")
+
+        if im.mode in {"I", "I;16"}:
+            # jpeg does not support 16bit grayscale
+            im = convert_i2l(im)
 
     options.update(save_options)
     im.save(filename, format=format, **options)

@@ -9,7 +9,7 @@ from torch import nn
 from torch.nn import functional as F
 from os import path
 from nunif.models import Model, get_model_device
-from nunif.modules import functional as NF
+import nunif.modules.vae as VF
 from nunif.training.env import UnsupervisedEnv
 from nunif.training.trainer import Trainer, create_trainer_default_parser
 from nunif.modules.res_block import ResBlockSELReLU, ResGroup
@@ -158,7 +158,7 @@ class ConvVAE(Model):
         return z
 
     def reparameterize(self, mean, log_var):
-        return NF.gaussian_noise(mean, log_var)
+        return VF.gaussian_noise(mean, log_var)
 
     def forward(self, x):
         B, C, H, W = x.shape
@@ -177,7 +177,7 @@ class VAELoss(nn.Module):
     def forward(self, z):
         recon, mean, log_var, x = z
         recon_loss = self.pixel_loss(recon, x)
-        kl_loss = NF.gaussian_kl_divergence_loss(mean, log_var)
+        kl_loss = VF.gaussian_kl_divergence_loss(mean, log_var)
         beta = mean.shape[1] / sum(recon.shape[1:])
         loss = beta * kl_loss + recon_loss
         return loss

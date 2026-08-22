@@ -12,8 +12,12 @@ The images and videos you really wanted to watch in VR can be watched on VR devi
 # Prerequisites
 
 - Windows 7 and greater; Windows 10 or greater recommended. Windows Server 2008 r2 and greater
-- Microsoft Visual C++ Redistributable Packages https://aka.ms/vs/16/release/vc_redist.x64.exe
+- Microsoft Visual C++ Redistributable Packages https://aka.ms/vc14/vc_redist.x64.exe
 - [Enable long paths](#enable-long-paths)
+
+
+2026-06-12: With the latest update, an outdated `Microsoft Visual C++ Redistributable` may cause errors. Please install the version listed above.
+
 
 # Download and Install
 

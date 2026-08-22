@@ -22,5 +22,6 @@ up_none: nessuno
 image_format: formato immagine
 button_convert: convertire
 button_download: scaricare
+button_clear: Cancella
 hints:
   - "Se stai usando Firefox, usa la combinazione di tasti [CTRL]+[S] per salvare l'immagine. L'opzione «salvare come...» non funziona."

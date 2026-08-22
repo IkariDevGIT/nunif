@@ -20,5 +20,6 @@ up_none: Ninguno
 image_format: Formato de imagen
 button_convert: Convertir
 button_download: Descargar
+button_clear: Limpiar
 hints:
   - "Si estás utilizando el navegador Firefox, utiliza la combinación de botones Control+S para guardar la imagen. La opción «Guardar imagen como...» no funciona."

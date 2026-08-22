@@ -21,6 +21,7 @@ from .model_dir import MODEL_DIR
 from .download_models import main as download_main
 
 
+IMAGE_IO_QUEUE_MAX = 16
 DEFAULT_ART_MODEL_DIR = path.join(MODEL_DIR, "swin_unet", "art")
 DEFAULT_ART_SCAN_MODEL_DIR = path.join(MODEL_DIR, "swin_unet", "art_scan")
 DEFAULT_PHOTO_MODEL_DIR = path.join(MODEL_DIR, "swin_unet", "photo")
@@ -30,11 +31,10 @@ SMB_INVALID_CHARS = '\\/:*?"<>|'
 
 
 def make_output_filename(input_filename, args, video=False):
-    basename = path.splitext(path.basename(input_filename))[0]
+    basename = path.basename(input_filename)
     basename = basename.translate({ord(c): ord("_") for c in SMB_INVALID_CHARS})
-
     if video:
-        return basename + args.video_extension
+        return path.splitext(basename)[0] + args.video_extension
     else:
         return set_image_ext(basename, args.format)
 
@@ -74,7 +74,7 @@ def process_image(ctx, im, meta, args):
 
 def process_images(ctx, files, output_dir, args, title=None):
     os.makedirs(output_dir, exist_ok=True)
-    loader = ImageLoader(files=files, max_queue_size=128,
+    loader = ImageLoader(files=files, max_queue_size=IMAGE_IO_QUEUE_MAX,
                          load_func=IL.load_image,
                          load_func_kwargs={"color": "rgb", "keep_alpha": True,
                                            "exif_transpose": not args.disable_exif_transpose})
@@ -83,6 +83,11 @@ def process_images(ctx, files, output_dir, args, title=None):
         tqdm_fn = args.state["tqdm_fn"] or tqdm
         pbar = tqdm_fn(ncols=80, total=len(files), desc=title)
         for im, meta in loader:
+            if len(futures) >= IMAGE_IO_QUEUE_MAX:
+                for _ in range(IMAGE_IO_QUEUE_MAX // 2):
+                    f = futures.pop(0)
+                    f.result()
+
             output_filename = path.join(
                 output_dir,
                 make_output_filename(meta["filename"], args, video=False))
@@ -102,12 +107,8 @@ def process_images(ctx, files, output_dir, args, title=None):
 
 
 def process_video(ctx, input_filename, output_path, args):
-    use_16bit = VU.pix_fmt_requires_16bit(args.pix_fmt)
-    if args.compile:
-        ctx.compile()
-
-    def config_callback(stream):
-        fps = VU.get_fps(stream)
+    def config_callback(metadata):
+        fps = metadata.get_fps()
         if float(fps) > args.max_fps:
             fps = args.max_fps
 
@@ -133,6 +134,12 @@ def process_video(ctx, input_filename, output_path, args):
                 options["qp"] = str(args.crf)
                 if torch.cuda.is_available() and args.gpu[0] >= 0:
                     options["gpu"] = str(args.gpu[0])
+        elif args.video_codec in {"h264_qsv", "hevc_qsv"}:
+            options = {
+                "preset": args.preset,
+                "crf": str(args.crf),
+                "global_quality": str(args.crf)
+            }
         elif args.video_codec == "libopenh264":
             # NOTE: It seems libopenh264 does not support most options.
             options = {"b": args.video_bitrate}
@@ -175,7 +182,7 @@ def process_video(ctx, input_filename, output_path, args):
                 args.state["noise_buffer"].add_(noise.mul_(args.grain_speed))
             output = apply_rgb_noise(output, args.state["noise_buffer"], strength=args.grain_strength)
 
-        return VU.to_frame(output, use_16bit=use_16bit)
+        return output
 
     if is_output_dir(output_path):
         os.makedirs(output_path, exist_ok=True)
@@ -203,7 +210,9 @@ def process_video(ctx, input_filename, output_path, args):
                      title=path.basename(input_filename),
                      start_time=args.start_time,
                      end_time=args.end_time,
-                     device=args.state["device"])
+                     device=args.state["device"],
+                     hwaccel=args.hwaccel,
+                     disable_software_fallback=args.disable_software_fallback)
 
 
 def load_files(txt):
@@ -261,6 +270,11 @@ def create_parser(required_true=True):
     parser.add_argument("--video-format", "-vf", type=str, default="mp4", choices=["mp4", "mkv", "avi"],
                         help="video container format")
     parser.add_argument("--video-codec", "-vc", type=str, default=None, help="video codec")
+    parser.add_argument("--hwaccel", type=str, default=None,
+                        choices=VU.HW_DEVICES,
+                        help="hardware accelerator for the video decoder")
+    parser.add_argument("--disable-software-fallback", action="store_true",
+                        help="disable software fallback for hardware hwaccel")
     parser.add_argument("--max-fps", type=float, default=128,
                         help="max framerate. output fps = min(fps, --max-fps) (video only)")
     parser.add_argument("--profile-level", type=str, help="h264 profile level")
@@ -380,6 +394,10 @@ def waifu2x_main(args):
 
     ctx = Waifu2x(model_dir=model_dir, gpus=args.gpu)
     ctx.load_model(args.method, args.noise_level)
+    if args.compile:
+        # Force `batch_size=1` to avoid recompilation.
+        args.batch_size = 1
+        ctx.compile()
 
     if path.isdir(args.input):
         if not is_output_dir(args.output):

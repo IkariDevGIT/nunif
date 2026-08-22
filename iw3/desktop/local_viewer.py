@@ -22,6 +22,7 @@ class _CUDART:
         candidates = [
             os.path.join(torch_dir, "lib"),
             os.path.join(site_packages, "nvidia", "cuda_runtime", "lib"),
+            os.path.join(site_packages, "nvidia", "cu13", "lib"),
             os.path.join(site_packages, "nvidia", "cuda_runtime", "bin"),  # Windows
         ]
         cudart_path = None

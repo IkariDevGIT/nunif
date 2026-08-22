@@ -93,19 +93,10 @@ def ordered_index_copy(c, src_index, dest_index, index_order, undefined_value=-1
     else:
         out = torch.empty_like(c).fill_(undefined_value)
 
-    # index_copy must run deterministically (depth order orverride)
-    # NOTE: `torch.use_deterministic_algorithms(True)` is a global setting.
-    #        This may cause an error if other threads run non-deterministic method while in this block.
-    #        Need to exclusive lock to prevent other threads running.
-    # TODO: Need to remove the complicated conditions of this very simple operation.
-    # for i in index_order:
-    #   out[dest_index[i]] = c[src_index[i]]
-    deterministic = torch.are_deterministic_algorithms_enabled()
-    torch.use_deterministic_algorithms(True)
-    try:
-        out.index_copy_(0, dest_index[index_order], c[src_index[index_order]])
-    finally:
-        torch.use_deterministic_algorithms(deterministic)
+    indices = dest_index[index_order]
+    src_values = c[src_index[index_order]]
+    indices = indices.unsqueeze(-1).expand_as(src_values)
+    out.scatter_(0, indices, src_values)
 
     return out.view(B, H, W, -1).permute(0, 3, 1, 2)
 

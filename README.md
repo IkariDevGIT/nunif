@@ -69,7 +69,7 @@ CLI tools are also available to filter out low quality images using these result
 
 #### Dependencies
 
-- Python 3 (Works with Python 3.10 or later, developed with 3.10)
+- Python 3 (developed with 3.12)
 - [PyTorch](https://pytorch.org/get-started/locally/)
 - See requirements.txt
 

@@ -26,6 +26,7 @@ tta_rule: Arată regulile `n-pass auto`."
 tta_hint: "TTA asigură calitate dar limitează dimensiunele imaginii."
 button_convert: Convertește
 button_download: Descărcă
+button_clear: Șterge
 hints:
   - "Dacă utilizezi Firefox, te rog să folosește CTRL+S pentru salvarea imaginii.  Opțiunea \"Save Image\" nu funcționează."
 

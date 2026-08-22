@@ -1,13 +1,14 @@
 import inspect
+from collections.abc import Callable
 from torch import nn
-from . model import Model
-from .. logger import logger
-from .. device import create_device
-from . data_parallel import DataParallelWrapper
+from .model import Model
+from ..logger import logger
+from ..device import create_device
+from .data_parallel import DataParallelWrapper
 import types
 
 
-_models = {}
+_models: dict[str, Callable] = {}
 
 
 def _set(name, factory):

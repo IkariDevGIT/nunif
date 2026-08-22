@@ -202,27 +202,38 @@ class DepthAnythingV3MonoModel(BaseDepthModel):
         return batch_infer(self.model, *args, **kwargs)
 
 
-def _bench():
+def _bench(resolution=504, do_compile=False):
     import time
+    import gc
+
+    gc.collect()
+    torch._dynamo.reset()
+    torch.cuda.empty_cache()
+    torch.cuda.reset_peak_memory_stats()
 
     B = 4
     N = 20
     model = DepthAnythingV3MonoModel("Any_V3_Mono")
-    model.load(gpu=0)
+    model.load(gpu=0, resolution=resolution)
+
+    print(f"*** bench: resolution={resolution}, batch={B}, compile={do_compile}")
+
+    if do_compile:
+        model.compile()
     x = torch.randn((B, 3, 1080, 1920)).cuda()
     model.infer(x)
     torch.cuda.synchronize()
 
-    with torch.no_grad():
-        t = time.time()
-        for _ in range(N):
-            model.infer(x)
-        torch.cuda.synchronize()
-        print(round(1.0 / ((time.time() - t) / (B * N)), 4), "FPS")
+    t = time.time()
+    for _ in range(N):
+        model.infer(x)
+    torch.cuda.synchronize()
+    print(round(1.0 / ((time.time() - t) / (B * N)), 4), "FPS")
 
     max_vram_mb = int(torch.cuda.max_memory_allocated("cuda") / (1024 * 1024))
     print(f"GPU Max Memory Allocated {max_vram_mb}MB")
 
 
 if __name__ == "__main__":
-    _bench()
+    _bench(do_compile=False)
+    _bench(do_compile=True)

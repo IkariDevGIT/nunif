@@ -22,5 +22,6 @@ up_none: 不放大
 image_format: 图片格式
 button_convert: 转换
 button_download: 下载
+button_clear: 清除
 hints:
   - "Firefox无法用右键菜单中的“保存图像”，请按Ctrl+S保存。"

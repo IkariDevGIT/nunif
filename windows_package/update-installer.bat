@@ -16,5 +16,8 @@ copy /y "%NUNIF_DIR%\windows_package\waifu2x-web.bat" "%~dp0\waifu2x-web.bat"
 
 xcopy "%NUNIF_DIR%\windows_package\torch_compile" "%~dp0\torch_compile" /E /H /Y /I
 
+@rem delete deprecated file
+if exist "%~dp0\torch_compile\install_triton_windows.bat" del /f /q "%~dp0\torch_compile\install_triton_windows.bat"
+
 pause
 exit /b 0

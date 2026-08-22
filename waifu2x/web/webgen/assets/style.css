@@ -203,3 +203,66 @@ label {
 .g-recaptcha {
     margin: 8px;
 }
+#result_wrapper {
+    margin-top: 20px;
+    border: 2px #ccc solid;
+    padding: 8px;
+    border-radius: 8px;
+    display: none;
+}
+#clear_results {
+    display: block;
+    margin-bottom: 20px;
+}
+#result {
+    text-align: center;
+}
+#result img {
+    max-width: 100%;
+    margin-bottom: 5px;
+    cursor: zoom-in;
+}
+#result img.zoomed {
+    max-width: none;
+    cursor: zoom-out;
+}
+.result-item {
+    border-top: 2px solid #ccc;
+    padding-top: 10px;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    min-height: 50px;
+}
+.result-item:first-child {
+    border-top: none;
+}
+.result-item .item-loading {
+    color: #444;
+    font-weight: bold;
+    margin: 10px 0;
+}
+.result-item .item-error {
+    color: #d33;
+    font-weight: bold;
+    margin: 10px 0;
+    white-space: pre-wrap;
+    text-align: left;
+}
+.download-link {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 0.9em;
+    color: #36b;
+    text-decoration: none;
+    text-align: left;
+}
+.download-link:hover {
+    text-decoration: underline;
+}
+#error_message {
+    display: none;
+    color: #d33;
+    font-weight: bold;
+    margin: 10px 0;
+    white-space: pre-wrap;
+}

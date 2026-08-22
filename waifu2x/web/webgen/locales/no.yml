@@ -26,6 +26,7 @@ tta_rule: "Vis `n-pass auto`-valget."
 tta_hint: "TTA fører til bedre kvalitet, men begrenser bildestørrelsen."
 button_convert: Konvertér
 button_download: Last ned
+button_clear: Tøm
 hints:
   - "Hvis du bruker Firefox, vennligst hold CTRL+S inne for å lagre bildet. \"Lagre bilde\"-funksjonen virker ikke."
   

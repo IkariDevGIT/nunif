@@ -49,7 +49,10 @@
 "Only used for row_flow_v3 and row_flow_v2": "仅用于row_flow_v3和row_flow_v2"
 "Foreground Scale": "前景缩放"
 "Edge Fix": "边缘修复"
-"Mask Dilation": "掩码膨胀"
+"Inpaint Overlap Frames": "重畳幀数"
+"Overlap Pre": "前向重叠（过去帧）"
+"Overlap Post": "后向重叠（未来帧）"
+"Inpaint Mask Dilation": "掩码膨胀"
 "Inpainting Model": "图像修复模型"
 "Inpaint Max Width": "修复最大宽度"
 "Inner": "内侧"
@@ -73,6 +76,10 @@
 " Streaming FPS: ": "流媒体帧数: "
 "Loading ": "正在加载"
 "Downloading ": "正在下载"
+
+"Video Decoding": "视频解码"
+"Software Fallback": "软件回退"
+"Use software decoder if hardware acceleration fails or is unsupported": "硬件加速失敗或不支持時，使用軟件解碼"
 
 "Video Encoding": "视频编码"
 

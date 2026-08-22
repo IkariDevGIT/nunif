@@ -1,8 +1,8 @@
 import torch
+import torch.nn.functional as F
+from nunif.device import autocast, device_is_mps
 from .mapper import get_mapper
 from .dilation import closing, dilate_inner, dilate_outer
-from nunif.device import autocast, device_is_mps
-import torch.nn.functional as F
 
 
 def make_divergence_feature_value(divergence, convergence, image_width):
@@ -32,16 +32,14 @@ def make_input_tensor(c, depth, divergence, convergence,
         # Note that this does not work with tiled rendering (training code)
         border_pix = round(divergence * 0.75 * 0.01 * image_width * (depth.shape[-1] / image_width))
         if border_pix > 0:
-            border_weight_l = torch.linspace(0.0, 1.0, border_pix, device=depth.device)
-            border_weight_r = torch.linspace(1.0, 0.0, border_pix, device=depth.device)
-            divergence_feat[:, :border_pix] = (border_weight_l[None, :].expand_as(divergence_feat[:, :border_pix]) *
-                                               divergence_feat[:, :border_pix])
-            divergence_feat[:, -border_pix:] = (border_weight_r[None, :].expand_as(divergence_feat[:, -border_pix:]) *
-                                                divergence_feat[:, -border_pix:])
-            convergence_feat[:, :border_pix] = (border_weight_l[None, :].expand_as(convergence_feat[:, :border_pix]) *
-                                                convergence_feat[:, :border_pix])
-            convergence_feat[:, -border_pix:] = (border_weight_r[None, :].expand_as(convergence_feat[:, -border_pix:]) *
-                                                 convergence_feat[:, -border_pix:])
+            view_shape = [1] * (depth.ndim - 1) + [-1]
+            border_weight_l = torch.linspace(0.0, 1.0, border_pix, dtype=depth.dtype, device=depth.device).view(view_shape)
+            border_weight_r = torch.linspace(1.0, 0.0, border_pix, dtype=depth.dtype, device=depth.device).view(view_shape)
+
+            divergence_feat[..., :border_pix] *= border_weight_l
+            divergence_feat[..., -border_pix:] *= border_weight_r
+            convergence_feat[..., :border_pix] *= border_weight_l
+            convergence_feat[..., -border_pix:] *= border_weight_r
 
     if c is not None:
         w, h = c.shape[2], c.shape[1]
@@ -118,6 +116,58 @@ def apply_divergence_grid_sample(c, depth, divergence, convergence, synthetic_vi
         left_eye = backward_warp(c, grid, -delta, delta_scale)
         right_eye = c
 
+    return left_eye, right_eye
+
+
+def apply_divergence_monobw(
+        model: torch.nn.Module,
+        c: torch.Tensor,
+        depth: torch.Tensor,
+        divergence: float,
+        convergence: float | torch.Tensor,
+        synthetic_view: str = "both",
+        preserve_screen_border: bool = False,
+        fix_screen_border_mask: int = 1,
+        return_mask=False,
+) -> tuple[torch.Tensor, torch.Tensor] | tuple[torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
+    assert synthetic_view in {"both", "right", "left"}
+    assert fix_screen_border_mask in {0, 1, 2}
+    if synthetic_view == "both":
+        left_eye = model(c, depth, divergence=divergence, convergence=convergence,
+                         preserve_screen_border=preserve_screen_border,
+                         fix_screen_border_mask=fix_screen_border_mask,
+                         return_mask=return_mask)
+        right_eye = model(c.flip(dims=[-1]), depth.flip(dims=[-1]), divergence=divergence, convergence=convergence,
+                          preserve_screen_border=preserve_screen_border,
+                          fix_screen_border_mask=fix_screen_border_mask,
+                          return_mask=return_mask)
+    elif synthetic_view == "right":
+        left_eye = c
+        right_eye = model(c.flip(dims=[-1]), depth.flip(dims=[-1]), divergence=divergence * 2, convergence=convergence,
+                          preserve_screen_border=preserve_screen_border,
+                          fix_screen_border_mask=fix_screen_border_mask,
+                          return_mask=return_mask)
+    elif synthetic_view == "left":
+        left_eye = model(c, depth, divergence=divergence * 2, convergence=convergence,
+                         preserve_screen_border=preserve_screen_border,
+                         fix_screen_border_mask=fix_screen_border_mask,
+                         return_mask=return_mask)
+        right_eye = c
+
+    if return_mask:
+        left_mask = right_mask = None
+        if isinstance(left_eye, tuple):
+            left_eye, left_mask = left_eye
+        if isinstance(right_eye, tuple):
+            right_eye, right_mask = right_eye
+        if synthetic_view in {"both", "right"}:
+            assert right_eye is not None and right_mask is not None
+            right_eye = right_eye.flip(dims=[-1])
+            right_mask = right_mask.flip(dims=[-1])
+        return left_eye, right_eye, left_mask, right_mask
+
+    if synthetic_view in {"both", "right"}:
+        right_eye = right_eye.flip(dims=[-1])
     return left_eye, right_eye
 
 

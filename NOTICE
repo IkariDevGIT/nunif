@@ -101,5 +101,10 @@ Paweł Kun / MIT License
 
 Other license files are included in each asset directory.
 
+---
+nunif/utils/repvgg.py: RepVGG
+Code and Weights from https://github.com/DingXiaoH/RepVGG
+DingXiaoH / MIT License
+
 ----
 Other libraries used are listed in `requirements.txt`.

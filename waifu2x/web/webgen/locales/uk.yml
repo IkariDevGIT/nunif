@@ -26,5 +26,6 @@ tta_rule: "Show the rule of `n-pass auto`."
 tta_hint: "TTA makes stable quality but it limits the source image size."
 button_convert: Convert
 button_download: Download
+button_clear: Очистити
 hints:
   - "Для користувачів Firefox: щоб зберегти зображення, натисніть CTRL+S. Кнопка \"Зберегти зображення\" не працює."

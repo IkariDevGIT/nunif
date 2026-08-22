@@ -4,8 +4,9 @@
 # Adding modules used in this repo by nagadomi
 import torch
 from torchvision.models.swin_transformer import ShiftedWindowAttentionV2, ShiftedWindowAttention
-from ..modules.norm import LayerNormNoBias2d, RMSNorm, RMSNorm1
+from ..modules.norm import LayerNormNoBias2d, RMSNorm1, RMSNorm2d
 from ..modules.fusion import Lerp, AdaptiveWeight, AdaptiveWeightedAdd
+from ..modules.norm import ReparamBatchNorm2d
 
 
 def configure_optim_groups(model, weight_decay=0.01):
@@ -25,6 +26,8 @@ def configure_optim_groups(model, weight_decay=0.01):
         torch.nn.Conv2d,
         torch.nn.Conv1d,
         torch.nn.ConvTranspose2d,
+        RMSNorm1, # 0-centered
+        RMSNorm2d,
     )
     blacklist_weight_modules = (
         torch.nn.LayerNorm,
@@ -34,11 +37,10 @@ def configure_optim_groups(model, weight_decay=0.01):
         torch.nn.GroupNorm,
         torch.nn.RMSNorm,
         LayerNormNoBias2d,
-        RMSNorm,
-        RMSNorm1,
         Lerp,
         AdaptiveWeight,
         AdaptiveWeightedAdd,
+        ReparamBatchNorm2d,
     )
     for mn, m in model.named_modules():
         for pn, p in m.named_parameters():
@@ -102,7 +104,7 @@ def configure_optim_groups(model, weight_decay=0.01):
     return optim_groups
 
 
-def configure_adamw(model, lr=0.001, betas=(0.9, 0.999), weight_decay=0.01):
+def configure_adamw(model, lr=0.001, betas=(0.9, 0.999), weight_decay=0.01, fused=None):
     optim_groups = configure_optim_groups(model, weight_decay=weight_decay)
-    optimizer = torch.optim.AdamW(optim_groups, lr=lr, betas=betas)
+    optimizer = torch.optim.AdamW(optim_groups, lr=lr, betas=betas, fused=fused)
     return optimizer

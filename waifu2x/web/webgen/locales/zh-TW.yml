@@ -25,5 +25,6 @@ tta_hint: "TTA 能產生穩定的品質。但圖片大小有限制。"
 tta_rule: "規則"
 button_convert: 執行
 button_download: 儲存執行結果
+button_clear: 清除
 hints:
   - "使用 Firefox 時無法透過右鍵選單儲存圖片，請改用 CTRL+S、或是按 ALT 鍵後點選檔案 - 另存新檔來儲存圖片。"

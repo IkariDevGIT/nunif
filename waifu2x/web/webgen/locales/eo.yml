@@ -21,5 +21,6 @@ up_none: neniu
 image_format: Bilda Formato
 button_convert: konverti
 button_download: malŝarĝi
+button_clear: Forviŝi
 hints:
   - "Se vi uzas Firefox, uzu la ŝlosilan kombinaĵon [CTRL]+[S] por konservi la bildon. La opcio \"konservi kiel...\" ne funkcias."

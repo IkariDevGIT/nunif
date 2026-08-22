@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .replication_pad2d import ReplicationPad2dNaive, ReplicationPad1dNaive
+from .replication_pad2d import ReplicationPad2dNaive, ReplicationPad1dNaive, replication_pad2d_naive
 from .permute import kernel2d_to_conv2d_weight, kernel1d_to_conv1d_weight
 
 
@@ -27,6 +27,29 @@ def get_gaussian_kernel2d(kernel_size, dtype=None, device=None, sigma=None):
     kernel1d_x = get_gaussian_kernel1d(kernel_size[1], sigma=sigma, dtype=dtype, device=device)
     kernel2d = torch.mm(kernel1d_y[:, None], kernel1d_x[None, :])
     return kernel2d
+
+
+def gaussian_blur2d(x, kernel_size, sigma=None):
+    if isinstance(kernel_size, (int,)):
+        kernel_size = [kernel_size, kernel_size]
+
+    batch = True
+    if x.ndim == 3:
+        x = x.unsqueeze(0)
+        batch = False
+
+    padding = [kernel_size[1] // 2, kernel_size[1] // 2,
+               kernel_size[0] // 2, kernel_size[0] // 2]
+
+    kernel = get_gaussian_kernel2d(kernel_size, dtype=x.dtype, device=x.device, sigma=sigma)
+    weight = kernel2d_to_conv2d_weight(x.shape[1], kernel)
+    x = replication_pad2d_naive(x, padding, detach=True)
+    x = F.conv2d(x, weight=weight, bias=None, groups=weight.shape[0])
+
+    if not batch:
+        x = x.squeeze(0)
+
+    return x
 
 
 class GaussianFilter2d(nn.Module):

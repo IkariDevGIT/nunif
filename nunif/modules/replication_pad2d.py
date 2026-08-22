@@ -2,12 +2,15 @@
 # 2. ReplicationPad2 calculates the gradient of the padding values multiply.
 #    This implementation can use `detach=True` option.
 
+import sys
+
 import torch
 import torch.nn as nn
-import sys
+import torch.nn.functional as F
 
 
 class ReplicationPad2d(nn.Module):
+    # deprecated
     def __init__(self, padding):
         super().__init__()
         if sys.platform == "darwin":
@@ -104,6 +107,26 @@ class ReplicationPad1dNaive(nn.Module):
 
     def forward(self, x):
         return replication_pad1d_naive(x, self.padding, detach=self.detach)
+
+
+def replication_pad2d_auto(x, padding, training: bool):
+    if training or x.device.type in {"mps"}:
+        # During training, the padding region is detached to avoid double accumulation of gradients.
+        # Since MPS does not support replicate padding, a naive implementation is used instead.
+        return replication_pad2d_naive(x, padding, detach=True)
+    else:
+        # Fast path
+        return F.pad(x, padding, mode="replicate")
+
+
+class ReplicationPad2dAuto(nn.Module):
+    def __init__(self, padding):
+        super().__init__()
+        assert isinstance(padding, (list, tuple)) and len(padding) == 4
+        self.padding = padding
+
+    def forward(self, x):
+        return replication_pad2d_auto(x, self.padding, training=self.training)
 
 
 def _test2d():

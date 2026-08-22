@@ -21,6 +21,7 @@ up_none: Keine
 image_format: Bildformat
 button_convert: Konvertieren
 button_download: Herunterladen
+button_clear: Löschen
 hints:
   - "Wenn Sie Firefox verwenden, benutzen Sie bitte STRG+S um das Bild zu speichern. Herunterladen funktioniert bei Firefox leider nicht."
   

@@ -31,21 +31,7 @@ nunif-windows が使用している Embeddable Python には、開発用のヘ�
 
 ## GPU での使用
 
-GPU 向けの torch.compile 対応は PyTorch/Triton 非公式 です。
-以下のリポジトリにある Windows 用の Triton を使用します:
-https://github.com/woct0rdho/triton-windows
-
-インストールスクリプトは `torch_compile` フォルダ内にあります。
-
-1. `install_triton_windows.bat` を実行します
-
-その後、デバイスとして NVIDIA GPU を選択し、`torch.compile` チェックボックスを有効にできるか確認してください。
-
-コンパイルキャッシュは次のディレクトリに保存されます:
-
-`C:\Users\<username>\AppData\Local\Temp\torchinductor_*`
-
-不要な場合は削除しても問題ありません。
+`triton-windows`は`requirements-torch.txt`からすでに自動でインストールされています。
 
 ## CPU での使用
 

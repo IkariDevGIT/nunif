@@ -34,7 +34,7 @@ from ..model_dir import MODEL_DIR
 from .public_dir import PUBLIC_DIR
 
 
-DEFAULT_ART_MODEL_DIR = path.abspath(path.join(MODEL_DIR, "swin_unet", "art"))
+DEFAULT_ART_MODEL_DIR = path.abspath(path.join(MODEL_DIR, "swin_unet_v3", "art"))
 DEFAULT_ART_SCAN_MODEL_DIR = path.abspath(path.join(MODEL_DIR, "swin_unet", "art_scan"))
 DEFAULT_PHOTO_MODEL_DIR = path.abspath(path.join(MODEL_DIR, "swin_unet", "photo"))
 BUFF_SIZE = 8192  # buffer block size for io access
@@ -138,6 +138,8 @@ def setup():
     parser.add_argument("--enable-recaptcha", action="store_true", help="enable reCAPTCHA. it requires --config option")
     parser.add_argument("--enable-turnstile", action="store_true",
                         help="enable CloudFlare Turnstile. it requires --config option")
+    parser.add_argument("--prefer-webp", action="store_true",
+                        help="If browser side PNG conversion is compatible, WebP is returned.")
     parser.add_argument("--config", type=str, help="config file for API tokens")
     parser.add_argument("--no-size-limit", action="store_true", help="No file/image size limits for private server")
     parser.add_argument("--torch-threads", type=int, help="The number of threads used for intraop parallelism on CPU")
@@ -153,6 +155,8 @@ def setup():
     photo_ctx.load_model_all(load_4x=False)
 
     if args.compile:
+        # Force `batch_size=1` to avoid recompilation.
+        args.batch_size = 1
         compile_lock = filelock.FileLock(COMPILE_LOCK)
         with compile_lock:
             logger.info("Compiling models...")
@@ -160,9 +164,6 @@ def setup():
             art_scan_ctx.compile()
             photo_ctx.compile()
             if args.warmup:
-                if args.batch_size != 1:
-                    logger.warning(("`--batch-size 1` is recommended."
-                                    "large batch size makes startup very slow."))
                 art_ctx.warmup(tile_size=args.tile_size, batch_size=args.batch_size,
                                enable_amp=not args.disable_amp)
                 art_scan_ctx.warmup(tile_size=args.tile_size, batch_size=args.batch_size,
@@ -280,6 +281,7 @@ def parse_request(request):
         scale = ScaleOption(int(request.forms.get("scale", "-1")))
         noise = NoiseOption(int(request.forms.get("noise", "-1")))
         image_format = FormatOption(int(request.forms.get("format", "0")))
+
     except ValueError:
         bottle.abort(400, "Bad Request")
 
@@ -390,6 +392,19 @@ def scale_16x(im, meta):
     return im
 
 
+def requires_png(meta):
+    if "grayscale" in meta and meta["grayscale"]:
+        return True
+
+    if "depth" in meta and meta["depth"] > 8:
+        return True
+
+    if "icc_profile" in meta and meta["icc_profile"] is not None:
+        return True
+
+    return False
+
+
 @bottle.get("/api")
 def api_get():
     last_request = request.get_cookie("last_request", secret=request.headers.get("User-Agent"))
@@ -440,6 +455,10 @@ def api():
     im, meta = fetch_image(request)
     if im is None:
         bottle.abort(400, "Image Load Error")
+
+    if command_args.prefer_webp and not requires_png(meta):
+        image_format = "webp"
+
     logger.debug(f"api: image: {dump_meta(meta)}")
     if scale != ScaleOption.NONE and im.size[0] * im.size[1] > MAX_SCALE_PIXELS:
         im.close()

@@ -32,21 +32,7 @@ This script installs the required development files into the environment.
 
 ## GPU
 
-`torch.compile` for GPU on Windows is **not officially supported** by PyTorch or Triton.  
-Use the Windows port of Triton available at the following repository:  
-<https://github.com/woct0rdho/triton-windows>
-
-The installation script is located in the `torch_compile` folder.
-
-1. Run `install_triton_windows.bat`
-
-After installation, select **NVIDIA GPU** as the device and verify that the `torch.compile` checkbox can be enabled.
-
-Compilation caches are stored in the following directory:
-
-`C:\Users<username>\AppData\Local\Temp\torchinductor_*`
-
-You can safely delete this folder if you no longer need the cache.
+`triton-windows` is already installed via `requirements-torch.txt`.
 
 ## CPU
 

@@ -26,5 +26,6 @@ tta_rule: "Pokaż zasadę `n-pass auto`."
 tta_hint: "TTA stabilizuje jakość ale ogranicza wielkość zdjęcia źródłowego."
 button_convert: Konwertuj
 button_download: Pobierz
+button_clear: Wyczyść
 hints:
   - "Jeżeli jesteś użytkownikiem przeglądarki Firefox, kilknij CTRL + S aby zapisać obraz. Opcja \"Zapisz obraz\" nie działa."

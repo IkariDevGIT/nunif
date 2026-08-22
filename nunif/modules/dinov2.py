@@ -220,6 +220,62 @@ def DINOv2PoolWith(base_loss, weight=1.0, model_type="vits", index=None, normali
     ), weights=(1.0, weight))
 
 
+class DINOv2AlignmentLoss(nn.Module):
+    """
+    Semantic Alignment Loss from Qwen-Image-VAE 2.0
+    https://arxiv.org/abs/2605.13565
+    """
+    def __init__(self, base_loss, weight=0.01, margin_cos=0.2, margin_dist=0.2, model_type="vitl", index=[11]):
+        super().__init__()
+        self.base_loss = base_loss
+        self.weight = weight
+        self.margin_cos = margin_cos
+        self.margin_dist = margin_dist
+        self.dino = DINOv2IntermediateFeatures(model_type=model_type, index=index)
+
+    @staticmethod
+    @conditional_compile("NUNIF_TRAIN")
+    def distance_matrix_similarity_loss(z, f, m_dist=0.2):
+        B, C, H, W = z.shape
+        z_flat = z.flatten(2).transpose(1, 2)
+        f_flat = f.flatten(2).transpose(1, 2)
+
+        z_norm = F.normalize(z_flat, p=2, dim=-1)
+        f_norm = F.normalize(f_flat, p=2, dim=-1)
+        cos_z = torch.bmm(z_norm, z_norm.transpose(1, 2))
+        cos_f = torch.bmm(f_norm, f_norm.transpose(1, 2))
+
+        matrix_diff = torch.abs(cos_z - cos_f)
+        loss_matrix = F.relu(matrix_diff - m_dist)
+
+        return loss_matrix.mean()
+
+    @staticmethod
+    def cosine_similarity_loss(z, f, m_cos=0.2):
+        return F.relu(1.0 - F.cosine_similarity(z, f, dim=1) - m_cos).mean()
+
+    @conditional_compile("NUNIF_TRAIN")
+    def forward_features(self, x):
+        with torch.no_grad():
+            features = self.dino(dinov2_normalize(x))[0]
+        return features.float().detach()
+
+    def forward(self, input, target):
+        if self.training:
+            assert isinstance(input, (tuple, list)) and len(input) == 3
+            input_rgb, src_rgb, input_features = input
+            base_loss = self.base_loss(input_rgb, target)
+
+            input_features = input_features.float()
+            target_features = self.forward_features(src_rgb)
+            cos_loss = self.cosine_similarity_loss(input_features, target_features, self.margin_cos)
+            mdms_loss = self.distance_matrix_similarity_loss(input_features, target_features, self.margin_dist)
+            loss = base_loss + (cos_loss + mdms_loss) * self.weight
+            return loss
+        else:
+            return self.base_loss(input, target)
+
+
 def _test_feat():
     model = DINOv2IntermediateFeatures(model_type="vits").cuda()
     x = torch.zeros((4, 3, 518, 518), dtype=torch.float32).cuda()

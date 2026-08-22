@@ -26,5 +26,6 @@ tta_hint: "TTAは安定した品質を作ります。ただし画像サイズに
 tta_rule: "ルール"
 button_convert: 実行
 button_download: 実行結果を保存
+button_clear: クリア
 hints:
   - "Firefoxの方は、右クリから画像が保存できないようなので、CTRL+SキーかALTキー後 ファイル - ページを保存 で画像を保存してください。"

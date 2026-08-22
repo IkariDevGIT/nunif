@@ -61,8 +61,12 @@ def autocast(device, dtype=None, enabled=True):
         # disabled
         amp_device_type = "cpu"
         amp_dtype = torch.bfloat16
-        if enabled:
-            enabled = False
+        enabled = False
+    elif device_is_mps(device):
+        # TODO: Test on macOS
+        amp_device_type = "mps"
+        amp_dtype = torch.float16
+        enabled = False
     else:
         # For CUDA, MPS, XPU, and unknown devices, this passes through to the standard PyTorch implementation.
         amp_device_type = device.split(":")[0] if isinstance(device, str) else device.type

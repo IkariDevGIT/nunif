@@ -28,6 +28,8 @@ from .screenshot_process import ( # noqa
     is_mss_supported,
 )
 from .streaming_server import StreamingServer
+
+LocalViewer: object | None
 try:
     from .local_viewer import LocalViewer
 except ImportError:
@@ -225,7 +227,7 @@ def try_switch_mlbw_model(old_divergence, new_divergence, old_side_model, args):
         device_id=args.gpu[0],
     )
     if args.compile and not isinstance(new_side_model, DeviceSwitchInference):
-        new_side_model = compile_model(new_side_model)
+        new_side_model = compile_model(new_side_model, args.state["device"])
         # NOTE: without this torch._dynamo.reset(), torch will crash
         gc_collect()
 
@@ -370,7 +372,7 @@ def iw3_desktop_main(args, init_wxapp=True):
         if args.compile:
             depth_model.compile()
             if side_model is not None and not isinstance(side_model, DeviceSwitchInference):
-                side_model = compile_model(side_model)
+                side_model = compile_model(side_model, device=device)
         gc_collect()
 
         # main loop

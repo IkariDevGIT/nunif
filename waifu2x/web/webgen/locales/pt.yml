@@ -22,5 +22,6 @@ up_none: Nenhum
 image_format: Formato de imagem
 button_convert: Converter
 button_download: Baixar
+button_clear: Limpar
 hints:
   - "Se você estiver usando o Firefox, por favor, aperte CTRL+S para salvar a imagem. A opção \"Salvar Imagem\" não funciona."

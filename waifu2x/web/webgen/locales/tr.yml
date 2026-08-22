@@ -21,5 +21,6 @@ up_none: Yok
 image_format: Görüntü formatı
 button_convert: Başlat
 button_download: İndir
+button_clear: Temizle
 hints:
   - "Firefox kullanıyorsanız, lütfen CTRL+S tuşu ile resmi indirin. \"Resmi Kaydet\" opsiyonu çalışmaz."

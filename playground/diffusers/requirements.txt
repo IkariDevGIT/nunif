@@ -1,0 +1,6 @@
+diffusers
+transformers
+bitsandbytes>=0.46.1
+gguf>=0.10.0
+peft
+prompt_toolkit

@@ -26,6 +26,7 @@ tta_rule: "Mostra la regla de `n-pass auto`."
 tta_hint: "El TTA estabilitza la qualitat però limita la mida de la imatge d'origen."
 button_convert: Converteix
 button_download: Descarrega
+button_clear: Neteja
 hints:
   - "Si utilitzeu el Firefox, premeu la tecla Control+S per desar la imatge. L'opció \"Desa la imatge\" no funciona."
   

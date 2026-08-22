@@ -200,7 +200,7 @@ class MainFrame(wx.Frame):
         self.cbo_method = wx.ComboBox(self.grp_stereo,
                                       choices=["mlbw_l2", "mlbw_l4", "mlbw_l2s",
                                                "row_flow_v3", "row_flow_v3_sym", "row_flow_v2",
-                                               "forward_fill"] + (["NULL"] if ADD_DEBUG_METHOD else []),
+                                               "forward_fill", "monobw"] + (["NULL"] if ADD_DEBUG_METHOD else []),
                                       name="cbo_method")
         self.cbo_method.SetEditable(False)
         self.cbo_method.SetSelection(4)
@@ -916,7 +916,8 @@ class MainFrame(wx.Frame):
 
     def update_preserve_screen_border(self):
         if self.cbo_method.GetValue() in {"row_flow_v2", "row_flow_v3", "row_flow_v3_sym",
-                                          "mlbw_l2", "mlbw_l4", "mlbw_l2s", "mlbw_l4s"}:
+                                          "mlbw_l2", "mlbw_l4", "mlbw_l2s", "mlbw_l4s",
+                                          "monobw"}:
             self.chk_preserve_screen_border.Enable()
         else:
             self.chk_preserve_screen_border.Disable()

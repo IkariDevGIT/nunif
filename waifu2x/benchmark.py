@@ -73,18 +73,55 @@ def add_jpeg_noise(x, y, args):
     return x, y
 
 
+def torch_resize(x, scale_factor, filter_type):
+    if filter_type == "torch_bilinear":
+        return torch.nn.functional.interpolate(
+            x.unsqueeze(0),
+            scale_factor=scale_factor,
+            mode="bilinear",
+            align_corners=False,
+            antialias=False,
+        ).squeeze(0)
+    elif filter_type == "torch_bilinear_antialias":
+        return torch.nn.functional.interpolate(
+            x.unsqueeze(0),
+            scale_factor=scale_factor,
+            mode="bilinear",
+            align_corners=False,
+            antialias=True,
+        ).squeeze(0)
+    elif filter_type == "torch_bilinear_align_corners":
+        return torch.nn.functional.interpolate(
+            x.unsqueeze(0),
+            scale_factor=scale_factor,
+            mode="bilinear",
+            align_corners=True,
+            antialias=False,
+        ).squeeze(0)
+    else:
+        raise ValueError(filter_type)
+
+
+def resize(x, scale_factor, filter_type, blur):
+    if filter_type.startswith("torch_"):
+        return torch_resize(x, scale_factor, filter_type)
+    else:
+        return IM.scale(x, scale_factor, filter_type=filter_type, blur=blur)
+
+
 def make_input_waifu2x(gt, args):
     x = gt
+
     if args.method == "scale":
-        x = IM.scale(x, 0.5, filter_type=args.filter, blur=args.blur)
+        x = resize(x, 0.5, filter_type=args.filter, blur=args.blur)
     elif args.method == "scale4x":
-        x = IM.scale(x, 0.25, filter_type=args.filter, blur=args.blur)
+        x = resize(x, 0.25, filter_type=args.filter, blur=args.blur)
     elif args.method == "noise":
         x, gt = add_jpeg_noise(x, gt, args)
     elif args.method == "noise_scale":
-        x, gt = add_jpeg_noise(IM.scale(x, 0.5, filter_type=args.filter, blur=args.blur), gt, args)
+        x, gt = add_jpeg_noise(resize(x, 0.5, filter_type=args.filter, blur=args.blur), gt, args)
     elif args.method == "noise_scale4x":
-        x, gt = add_jpeg_noise(IM.scale(x, 0.25, filter_type=args.filter, blur=args.blur), gt, args)
+        x, gt = add_jpeg_noise(resize(x, 0.25, filter_type=args.filter, blur=args.blur), gt, args)
     return x, gt
 
 
@@ -139,8 +176,12 @@ def parse_args():
                         help="shift image block each jpeg compression")
     parser.add_argument("--jpeg-yuv420", action="store_true",
                         help="use yuv420 jpeg")
-    parser.add_argument("--filter", type=str, choices=["catrom", "box", "lanczos", "sinc", "triangle"],
-                        default="catrom", help="downscaling filter for generate LR image")
+    parser.add_argument(
+        "--filter",
+        type=str,
+        choices=["catrom", "box", "lanczos", "sinc", "triangle",
+                 "torch_bilinear", "torch_bilinear_antialias", "torch_bilinear_align_corners"],
+        default="catrom", help="downscaling filter for generate LR image")
     parser.add_argument("--blur", type=float,
                         default=1, help="resize blur. 0.95: shapen, 1.05: blur")
     parser.add_argument("--baseline", action="store_true", help="show the score of --baseline-filter")
@@ -190,6 +231,7 @@ def main():
         ctx.half()
         args.disable_amp = True
     if args.compile:
+        args.batch_size = 1
         ctx.compile()
         ctx.warmup(tile_size=args.tile_size, batch_size=args.batch_size, enable_amp=not args.disable_amp)
 

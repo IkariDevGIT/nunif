@@ -1,25 +1,26 @@
-import os
-from os import path
 import argparse
+import inspect
+import os
+from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 from multiprocessing import cpu_count
+from os import path
+
 import torch
 import torch.optim as optim
 import torch.optim.swa_utils as swa_utils
-from torch.optim.lr_scheduler import (
-    StepLR, MultiStepLR, CosineAnnealingWarmRestarts,
-    ConstantLR, ChainedScheduler
-)
-from . cosine_wd import (
+from torch.optim.lr_scheduler import ChainedScheduler, ConstantLR, CosineAnnealingWarmRestarts, MultiStepLR, StepLR
+
+from ..device import create_device
+from ..initializer import gc_collect, set_seed
+from ..models import create_model, load_model, save_model
+from ..optim import Lion
+from .cosine_wd import (
     CosineAnnealingWarmRestartsWithFixedWeightDecay,
     CosineAnnealingWarmRestartsWithScheduledWeightDecay,
 )
-from ..optim import Lion
-from ..models import create_model, save_model, load_model
-from ..initializer import set_seed, gc_collect
-from ..device import create_device
-from .weight_decay_config import configure_optim_groups, configure_adamw
-from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from .weight_decay_config import configure_adamw, configure_optim_groups
+
 try:
     import schedulefree
 except ModuleNotFoundError:
@@ -30,7 +31,7 @@ class Trainer(ABC):
     def __init__(self, args):
         self.args = args
         self.initialized = False
-        self.runtime_id = datetime.now(timezone.utc).astimezone().strftime('%Y%m%d%H%M%S')
+        self.runtime_id = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d%H%M%S")
 
     def initialize(self):
         if self.initialized:
@@ -61,12 +62,15 @@ class Trainer(ABC):
 
         if self.amp_is_enabled():
             self.env.enable_amp()
-        self.env.set_amp_dtype(torch.bfloat16 if (self.args.amp_float == "bfloat16" or self.args.gpu[0] < 0) else torch.float16)
+        self.env.set_amp_dtype(
+            torch.bfloat16 if (self.args.amp_float == "bfloat16" or self.args.gpu[0] < 0) else torch.float16
+        )
         self.log_fp = open(path.join(self.args.model_dir, f"loss_{self.runtime_id}.csv"), mode="w")
 
         if self.args.ema_model:
             self.ema_model = swa_utils.AveragedModel(
-                self.model, multi_avg_fn=swa_utils.get_ema_multi_avg_fn(self.args.ema_decay))
+                self.model, multi_avg_fn=swa_utils.get_ema_multi_avg_fn(self.args.ema_decay)
+            )
 
         self.setup()
 
@@ -124,7 +128,7 @@ class Trainer(ABC):
     def _lr_format(schedulers):
         lrs = []
         for scheduler in schedulers:
-            lrs.append("[" + ", ".join([format(lr, '.3g') for lr in scheduler.get_last_lr()]) + "]")
+            lrs.append("[" + ", ".join([format(lr, ".3g") for lr in scheduler.get_last_lr()]) + "]")
         return "[" + ", ".join(lrs) + "]"
 
     def fit(self):
@@ -176,8 +180,7 @@ class Trainer(ABC):
 
     def create_model(self):
         if not hasattr(self.args, "arch"):
-            raise NotImplementedError("--arch option is not implemented."
-                                      " Add --arch option or override create_model()")
+            raise NotImplementedError("--arch option is not implemented. Add --arch option or override create_model()")
         return create_model(self.args.arch, device_ids=self.args.gpu)
 
     def create_optimizers(self):
@@ -191,41 +194,49 @@ class Trainer(ABC):
         num_samples = self.args.num_samples if hasattr(self.args, "num_samples") else 0
 
         if optimizer_type == "adam":
-            return optim.Adam(model.parameters(), lr=lr,
-                              betas=(adam_beta1, 0.999))
+            return optim.Adam(model.parameters(), lr=lr, betas=(adam_beta1, 0.999))
         elif optimizer_type == "adamw":
+            return configure_adamw(model, lr=lr, weight_decay=weight_decay, betas=(adam_beta1, 0.999))
+        elif optimizer_type == "adamw_fused":
             return configure_adamw(
                 model,
                 lr=lr,
                 weight_decay=weight_decay,
-                betas=(adam_beta1, 0.999))
+                betas=(adam_beta1, 0.999),
+                fused=True,
+            )
         elif optimizer_type == "sgd":
-            return optim.SGD(
-                model.parameters(),
-                lr=lr,
-                momentum=self.args.momentum,
-                weight_decay=weight_decay)
+            return optim.SGD(model.parameters(), lr=lr, momentum=self.args.momentum, weight_decay=weight_decay)
         elif optimizer_type == "sgd_schedulefree":
             assert schedulefree is not None
             return schedulefree.SGDScheduleFree(
-                model.parameters(), lr=lr, momentum=self.args.momentum,
+                model.parameters(),
+                lr=lr,
+                momentum=self.args.momentum,
                 weight_decay=weight_decay,
-                warmup_steps=self.args.warmup_epoch * num_samples // (self.args.batch_size * self.args.backward_step))
+                warmup_steps=self.args.warmup_epoch * num_samples // (self.args.batch_size * self.args.backward_step),
+            )
         elif optimizer_type == "adamw_schedulefree":
             assert schedulefree is not None
+            sig = inspect.signature(schedulefree.AdamWScheduleFree)
+            kwargs = dict()
+            if "inner_momentum" in sig.parameters:
+                kwargs.update(dict(inner_momentum=0.9))
             optim_groups = configure_optim_groups(model, weight_decay=weight_decay)
             optimizer = schedulefree.AdamWScheduleFree(
-                optim_groups, lr=lr, betas=(adam_beta1, 0.999),
-                warmup_steps=self.args.warmup_epoch * num_samples // (self.args.batch_size * self.args.backward_step))
+                optim_groups,
+                lr=lr,
+                betas=(adam_beta1, 0.999),
+                warmup_steps=self.args.warmup_epoch * num_samples // (self.args.batch_size * self.args.backward_step),
+                weight_decay=weight_decay,
+                **kwargs,
+            )
             return optimizer
         elif optimizer_type == "radam_schedulefree":
             assert schedulefree is not None
-            return schedulefree.RAdamScheduleFree(model.parameters(), lr=lr,
-                                                  betas=(adam_beta1, 0.999))
+            return schedulefree.RAdamScheduleFree(model.parameters(), lr=lr, betas=(adam_beta1, 0.999))
         elif optimizer_type == "lion":
-            return Lion(model.parameters(),
-                        lr=lr,
-                        weight_decay=weight_decay)
+            return Lion(model.parameters(), lr=lr, weight_decay=weight_decay)
         else:
             raise NotImplementedError(f"optimizer = {optimizer_type}")
 
@@ -240,14 +251,12 @@ class Trainer(ABC):
         if self.args.scheduler == "step":
             if len(self.args.learning_rate_decay_step) == 1:
                 scheduler = StepLR(
-                    optimizer,
-                    step_size=self.args.learning_rate_decay_step[0],
-                    gamma=self.args.learning_rate_decay)
+                    optimizer, step_size=self.args.learning_rate_decay_step[0], gamma=self.args.learning_rate_decay
+                )
             else:
                 scheduler = MultiStepLR(
-                    optimizer,
-                    milestones=self.args.learning_rate_decay_step,
-                    gamma=self.args.learning_rate_decay)
+                    optimizer, milestones=self.args.learning_rate_decay_step, gamma=self.args.learning_rate_decay
+                )
         elif self.args.scheduler in {"cosine", "cosine_wd", "cosine_fixed_wd"}:
             step = self.args.learning_rate_cycles
             if not hasattr(self.args, "original_max_epoch"):
@@ -259,22 +268,25 @@ class Trainer(ABC):
             print(f"scheduler=cosine: max_epoch: {old_max_epoch} -> {self.args.max_epoch}")
             eta_min = self.args.learning_rate_cosine_min
             if self.args.scheduler == "cosine":
-                scheduler = CosineAnnealingWarmRestarts(
-                    optimizer, T_0=t_0, eta_min=eta_min)
+                scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=t_0, eta_min=eta_min)
             elif self.args.scheduler == "cosine_wd":
                 scheduler = CosineAnnealingWarmRestartsWithScheduledWeightDecay(
-                    optimizer, T_0=t_0, eta_min=eta_min,
+                    optimizer,
+                    T_0=t_0,
+                    eta_min=eta_min,
                     weight_decay_min=self.args.weight_decay,
-                    weight_decay_max=self.args.weight_decay_end)
+                    weight_decay_max=self.args.weight_decay_end,
+                )
             elif self.args.scheduler == "cosine_fixed_wd":
-                scheduler = CosineAnnealingWarmRestartsWithFixedWeightDecay(
-                    optimizer, T_0=t_0, eta_min=eta_min)
+                scheduler = CosineAnnealingWarmRestartsWithFixedWeightDecay(optimizer, T_0=t_0, eta_min=eta_min)
         if self.args.warmup_epoch > 0:
             # TODO: `total_iters=self.args.warmup_epoch` does not work correctly,
             # ConstantLR works fine, but does not work correctly when used with ChainedScheduler.
-            warmup_scheduler = ConstantLR(optimizer,
-                                          factor=self.args.warmup_learning_rate / self.args.learning_rate,
-                                          total_iters=self.args.warmup_epoch)
+            warmup_scheduler = ConstantLR(
+                optimizer,
+                factor=self.args.warmup_learning_rate / self.args.learning_rate,
+                total_iters=self.args.warmup_epoch,
+            )
             scheduler = ChainedScheduler([warmup_scheduler, scheduler])
 
         return scheduler
@@ -308,7 +320,8 @@ class Trainer(ABC):
             grad_scaler_state_dict=grad_scaler_state_dict,
             best_loss=self.best_loss,
             last_epoch=self.epoch,
-            **kwargs)
+            **kwargs,
+        )
 
     def save_epoch_model(self):
         backup_model_dir, backup_disable_backup = self.args.model_dir, self.args.disable_backup
@@ -351,7 +364,7 @@ class Trainer(ABC):
 
     @abstractmethod
     def create_dataloader(self, type):
-        assert (type in {"train", "eval"})
+        assert type in {"train", "eval"}
 
     @abstractmethod
     def create_env(self):
@@ -359,87 +372,109 @@ class Trainer(ABC):
 
 
 def create_trainer_default_parser():
-    parser = argparse.ArgumentParser(
-        add_help=False,
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = argparse.ArgumentParser(add_help=False, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     num_workers = min(cpu_count() - 2, 8)
     if not num_workers > 0:
         num_workers = cpu_count()
 
-    parser.add_argument("--data-dir", "-i", type=str, required=True,
-                        help="input training data directory that created by `create_training_data` command")
-    parser.add_argument("--model-dir", type=str, required=True,
-                        help="output directory for trained model/checkpoint")
-    parser.add_argument("--batch-size", type=int, default=64,
-                        help="minibatch size")
-    parser.add_argument("--backward-step", type=int, default=1,
-                        help="number of times to accumulate gradient")
-    parser.add_argument("--eval-step", type=int, default=1,
-                        help="eval interval")
+    parser.add_argument(
+        "--data-dir",
+        "-i",
+        type=str,
+        required=True,
+        help="input training data directory that created by `create_training_data` command",
+    )
+    parser.add_argument("--model-dir", type=str, required=True, help="output directory for trained model/checkpoint")
+    parser.add_argument("--batch-size", type=int, default=64, help="minibatch size")
+    parser.add_argument("--backward-step", type=int, default=1, help="number of times to accumulate gradient")
+    parser.add_argument("--eval-step", type=int, default=1, help="eval interval")
 
-    parser.add_argument("--optimizer", type=str,
-                        choices=["adam", "adamw", "sgd", "lion",
-                                 "sgd_schedulefree", "adamw_schedulefree", "radam_schedulefree"], default="adam",
-                        help="optimizer")
-    parser.add_argument("--weight-decay", type=float, default=1e-4,
-                        help="weight decay coefficient for adamw, sgd")
-    parser.add_argument("--weight-decay-end", type=float, default=0.05,
-                        help="max weight decay coefficient for cosine_wd")
-    parser.add_argument("--adam-beta1", type=float, default=0.9,
-                        help="beta1 hyperparameter for adam/adamw")
-    parser.add_argument("--momentum", type=float, default=0.9,
-                        help="momentum for sgd")
-    parser.add_argument("--num-workers", type=int, default=num_workers,
-                        help="number of worker processes for data loader")
-    parser.add_argument("--prefetch-factor", type=int, default=4,
-                        help="number of batches loaded in advance by each worker")
-    parser.add_argument("--max-epoch", type=int, default=200,
-                        help="max epoch")
-    parser.add_argument("--gpu", type=int, nargs="+", default=[0],
-                        help="device ids; if -1 is specified, use CPU")
-    parser.add_argument("--learning-rate", type=float, default=0.00025,
-                        help="learning rate")
-    parser.add_argument("--scheduler", type=str, choices=["step", "cosine", "cosine_wd", "cosine_fixed_wd"], default="step",
-                        help="learning rate scheduler")
-    parser.add_argument("--learning-rate-decay", type=float, default=0.995,
-                        help="learning rate decay for StepLR")
-    parser.add_argument("--learning-rate-decay-step", type=int, nargs="+", default=[1],
-                        help="learning rate decay step for StepLR/MultiStepLR")
-    parser.add_argument("--learning-rate-cycles", type=int, default=5,
-                        help="number of learning rate cycles for CosineAnnealingWarmRestarts")
-    parser.add_argument("--learning-rate-cosine-min", type=float, default=1e-6,
-                        help="Minimum learning rate for --schedule cosine")
-    parser.add_argument("--warmup-epoch", type=int, default=0,
-                        help="warmup epochs with --warmup-learning-rate")
-    parser.add_argument("--warmup-learning-rate", type=float, default=1e-6,
-                        help="learning rate for warmup")
-    parser.add_argument("--disable-amp", action="store_true",
-                        help="disable AMP for some special reason")
-    parser.add_argument("--amp-float", type=str, default="fp16", choices=["bfloat16", "fp16"],
-                        help="dtype for autocast. bfloat16/fp16")
-    parser.add_argument("--resume", action="store_true",
-                        help="resume training from the latest checkpoint file")
-    parser.add_argument("--reset-state", action="store_true",
-                        help="do not load best_score, optimizer and scheduler state when --resume")
-    parser.add_argument("--seed", type=int, default=71,
-                        help="random seed. if -1 is specified, a random number seed is used")
-    parser.add_argument("--checkpoint-file", type=str,
-                        help="checkpoint file for initializing model parameters. ignored when --resume is specified")
-    parser.add_argument("--disable-backup", action="store_true",
-                        help="disable backup of the best model file for every runtime")
-    parser.add_argument("--save-epoch", action="store_true",
-                        help="save the model file at each epoch")
-    parser.add_argument("--ignore-nan", action="store_true",
-                        help="do not raise NaN exception unless NaN occurs more than 100 times in one epoch")
-    parser.add_argument("--skip-eval", action="store_true",
-                        help="Skip eval")
-    parser.add_argument("--ema-model", action="store_true",
-                        help="Use AveragedModel and save EMA model checkpoint")
-    parser.add_argument("--ema-decay", type=float, default=0.999,
-                        help="decay parameter for EMA model")
-    parser.add_argument("--ema-step", type=int, default=1,
-                        help="Update interval for EMA model")
-    parser.add_argument("--clip-grad-norm", type=float, default=-1,
-                        help="clip grad norm")
+    parser.add_argument(
+        "--optimizer",
+        type=str,
+        choices=[
+            "adam",
+            "adamw",
+            "adamw_fused",
+            "sgd",
+            "lion",
+            "sgd_schedulefree",
+            "adamw_schedulefree",
+            "radam_schedulefree",
+        ],
+        default="adam",
+        help="optimizer",
+    )
+    parser.add_argument("--weight-decay", type=float, default=1e-4, help="weight decay coefficient for adamw, sgd")
+    parser.add_argument(
+        "--weight-decay-end", type=float, default=0.05, help="max weight decay coefficient for cosine_wd"
+    )
+    parser.add_argument("--adam-beta1", type=float, default=0.9, help="beta1 hyperparameter for adam/adamw")
+    parser.add_argument("--momentum", type=float, default=0.9, help="momentum for sgd")
+    parser.add_argument(
+        "--num-workers", type=int, default=num_workers, help="number of worker processes for data loader"
+    )
+    parser.add_argument(
+        "--prefetch-factor", type=int, default=4, help="number of batches loaded in advance by each worker"
+    )
+    parser.add_argument("--max-epoch", type=int, default=200, help="max epoch")
+    parser.add_argument("--gpu", type=int, nargs="+", default=[0], help="device ids; if -1 is specified, use CPU")
+    parser.add_argument("--learning-rate", type=float, default=0.00025, help="learning rate")
+    parser.add_argument(
+        "--scheduler",
+        type=str,
+        choices=["step", "cosine", "cosine_wd", "cosine_fixed_wd"],
+        default="step",
+        help="learning rate scheduler",
+    )
+    parser.add_argument("--learning-rate-decay", type=float, default=0.995, help="learning rate decay for StepLR")
+    parser.add_argument(
+        "--learning-rate-decay-step",
+        type=int,
+        nargs="+",
+        default=[1],
+        help="learning rate decay step for StepLR/MultiStepLR",
+    )
+    parser.add_argument(
+        "--learning-rate-cycles",
+        type=int,
+        default=5,
+        help="number of learning rate cycles for CosineAnnealingWarmRestarts",
+    )
+    parser.add_argument(
+        "--learning-rate-cosine-min", type=float, default=1e-6, help="Minimum learning rate for --schedule cosine"
+    )
+    parser.add_argument("--warmup-epoch", type=int, default=0, help="warmup epochs with --warmup-learning-rate")
+    parser.add_argument("--warmup-learning-rate", type=float, default=1e-6, help="learning rate for warmup")
+    parser.add_argument("--disable-amp", action="store_true", help="disable AMP for some special reason")
+    parser.add_argument(
+        "--amp-float", type=str, default="fp16", choices=["bfloat16", "fp16"], help="dtype for autocast. bfloat16/fp16"
+    )
+    parser.add_argument("--resume", action="store_true", help="resume training from the latest checkpoint file")
+    parser.add_argument(
+        "--reset-state", action="store_true", help="do not load best_score, optimizer and scheduler state when --resume"
+    )
+    parser.add_argument(
+        "--seed", type=int, default=71, help="random seed. if -1 is specified, a random number seed is used"
+    )
+    parser.add_argument(
+        "--checkpoint-file",
+        type=str,
+        help="checkpoint file for initializing model parameters. ignored when --resume is specified",
+    )
+    parser.add_argument(
+        "--disable-backup", action="store_true", help="disable backup of the best model file for every runtime"
+    )
+    parser.add_argument("--save-epoch", action="store_true", help="save the model file at each epoch")
+    parser.add_argument(
+        "--ignore-nan",
+        action="store_true",
+        help="do not raise NaN exception unless NaN occurs more than 100 times in one epoch",
+    )
+    parser.add_argument("--skip-eval", action="store_true", help="Skip eval")
+    parser.add_argument("--ema-model", action="store_true", help="Use AveragedModel and save EMA model checkpoint")
+    parser.add_argument("--ema-decay", type=float, default=0.999, help="decay parameter for EMA model")
+    parser.add_argument("--ema-step", type=int, default=1, help="Update interval for EMA model")
+    parser.add_argument("--clip-grad-norm", type=float, default=-1, help="clip grad norm")
 
     return parser

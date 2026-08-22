@@ -93,7 +93,7 @@ def get_model_device(model):
         return next(model.parameters()).device
 
 
-_COMPILER_SUPPORTED_DEVICES = {}
+_COMPILER_SUPPORTED_DEVICES: dict[str, bool] = {}
 
 
 def _test_func(x):
@@ -120,11 +120,24 @@ def check_compile_support(device):
     return _COMPILER_SUPPORTED_DEVICES[device_name]
 
 
-def compile_model(model, **kwargs):
-    if not is_compiled_model(model) and check_compile_support(get_model_device(model)):
+def compile_model(model, device=None, **kwargs):
+    device = device or get_model_device(model)
+
+    if not is_compiled_model(model) and check_compile_support(device):
         logger.debug(f"compile {model.__class__.__name__}, kwargs={kwargs}")
         model = torch.compile(model, **kwargs)
     return model
+
+
+def compile_function(func, device, **kwargs):
+    if not is_compiled_function(func) and check_compile_support(device):
+        logger.debug(f"compile {func.__name__}, kwargs={kwargs}")
+        func = torch.compile(func, **kwargs)
+    return func
+
+
+def is_compiled_function(func):
+    return hasattr(func, "_torchdynamo_orig_callable")
 
 
 def is_compiled_model(model):

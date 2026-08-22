@@ -26,5 +26,6 @@ tta_rule: "Afficher le tableau comparatif"
 tta_hint: "L'allongement de la période de contrôle (en anglais, Test-Time Augmentation) assure une qualité stabilisée mais impose une limite sur les dimensions de l'image source."
 button_convert: "Convertir"
 button_download: "Télécharger"
+button_clear: "Effacer"
 hints:
   - "Note aux utilisateurs de Firefox : L'option \"Enregistrer l'image\" ne fonctionne pas. Merci d'utiliser Ctrl+S pour enregistrer l'image. "

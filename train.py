@@ -1,6 +1,8 @@
 import os
 import argparse
 from pprint import pprint
+import torch
+
 from nunif.addon import load_addons
 from nunif.initializer import set_seed, disable_image_lib_threads
 from nunif.training.trainer import create_trainer_default_parser
@@ -8,6 +10,7 @@ from nunif.training.trainer import create_trainer_default_parser
 
 def main():
     os.environ["NUNIF_TRAIN"] = "1"
+    torch._dynamo.config.recompile_limit = 32
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     subparsers = parser.add_subparsers(help="task", required=True)
