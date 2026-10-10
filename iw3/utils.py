@@ -6,6 +6,7 @@ import sys
 import threading
 import traceback
 import warnings
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor as PoolExecutor
 from os import path
 from typing import Any, cast
@@ -584,6 +585,7 @@ def process_image(
     alpha=None,
     fill_color=0.0,
     depth_reuse: FrameDepthReuse | None = None,
+    depth_preview_callback: Callable[[torch.Tensor], None] | None = None,
 ):
     assert depth_model.get_ema_buffer_size() == 1
 
@@ -639,6 +641,16 @@ def process_image(
                 **reuse_options,
             )
             depth = depth_model.minmax_normalize_chw(depth)
+
+        if depth_preview_callback is not None:
+            processed_depth = get_mapper(args.mapper)(depth)
+            processed_depth = F.interpolate(
+                processed_depth.unsqueeze(0),
+                size=x.shape[-2:],
+                mode="bilinear",
+                align_corners=True,
+            ).squeeze(0)
+            depth_preview_callback(autocrop.uncrop(processed_depth))
 
         if args.debug_depth:
             return debug_depth_image(depth, args)

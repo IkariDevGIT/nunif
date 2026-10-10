@@ -220,6 +220,12 @@ Specify the `--local-viewer` option.
 
 Even if specified from the CLI, a GUI window will be displayed, so wxpython and OpenGL are required (installed from `requirements-gui.txt`).
 
+Press **F7** while the local viewer has focus to toggle a grayscale preview of the
+processed depth map. It includes depth anti-aliasing, edge dilation, flicker
+normalization, and the selected depth mapping. Capture and stereo rendering continue
+in the background. Press F7 again to return to stereo. The preview starts off for
+each viewer session and is not saved in settings or presets.
+
 To switch the viewer's monitor to a larger display mode while fullscreen, use:
 
 ```bash

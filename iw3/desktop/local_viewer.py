@@ -6,6 +6,7 @@ import time
 from collections import deque
 
 import torch
+import torch.nn.functional as F
 import wx
 from OpenGL import GL
 from wx import glcanvas
@@ -13,6 +14,20 @@ from wx import glcanvas
 from .display_mode import FullscreenDisplayMode
 
 POLLING_INTERVAL = 1.0 / 240.0
+
+
+def make_depth_preview(depth: torch.Tensor, output_size: tuple[int, int]) -> torch.Tensor:
+    height, width = output_size
+    depth_height, depth_width = depth.shape[-2:]
+    scale = min(height / depth_height, width / depth_width)
+    preview_height = max(1, min(height, round(depth_height * scale)))
+    preview_width = max(1, min(width, round(depth_width * scale)))
+    preview = depth.float().unsqueeze(0)
+    if (preview_height, preview_width) != (depth_height, depth_width):
+        preview = F.interpolate(preview, (preview_height, preview_width), mode="bilinear", align_corners=True)
+    preview = preview.squeeze(0).clamp(0, 1).expand(3, -1, -1)
+    left, top = (width - preview_width) // 2, (height - preview_height) // 2
+    return F.pad(preview, (left, width - preview_width - left, top, height - preview_height - top))
 
 
 def gl_renderer_string():
@@ -459,6 +474,8 @@ class GLCanvas(glcanvas.GLCanvas):
 
 
 class LocalViewerWindow(wx.Frame):
+    DEFAULT_TITLE = "iw3-desktop: Local Viewer"
+
     def __init__(
         self,
         width,
@@ -470,9 +487,7 @@ class LocalViewerWindow(wx.Frame):
         polling_interval=POLLING_INTERVAL,
         fullscreen_display_mode: bool = False,
     ):
-        super().__init__(
-            None, title="iw3-desktop: Local Viewer", size=size, style=wx.DEFAULT_FRAME_STYLE | wx.CLIP_CHILDREN
-        )
+        super().__init__(None, title=self.DEFAULT_TITLE, size=size, style=wx.DEFAULT_FRAME_STYLE | wx.CLIP_CHILDREN)
         self.canvas = GLCanvas(
             self,
             width=width,
@@ -488,6 +503,11 @@ class LocalViewerWindow(wx.Frame):
         self.display_mode = FullscreenDisplayMode() if fullscreen_display_mode else None
         self.fullscreen_requested = False
         self.fullscreen_sequence = 0
+        self.show_depth_preview = False
+
+    def toggle_depth_preview(self) -> None:
+        self.show_depth_preview = not self.show_depth_preview
+        self.SetTitle(self.DEFAULT_TITLE + (" (Processed depth)" if self.show_depth_preview else ""))
 
     def toggle_fullscreen(self) -> None:
         self.set_fullscreen(not (self.fullscreen_requested or self.IsFullScreen()))
@@ -536,6 +556,8 @@ class LocalViewerWindow(wx.Frame):
             self.escape_fullscreen()
         elif code == wx.WXK_F11:
             self.toggle_fullscreen()
+        elif code == wx.WXK_F7:
+            self.toggle_depth_preview()
         else:
             evt.Skip()
 
@@ -616,10 +638,20 @@ class LocalViewer:
             raise RuntimeError("wx.App is not initialized")
         wx.CallAfter(self._start)
 
-    def set_frame_data(self, frame_data):
+    def is_depth_preview_enabled(self) -> bool:
+        with self.op_lock:
+            return self.window is not None and self.window.show_depth_preview
+
+    def set_frame_data(
+        self,
+        frame_data: tuple[torch.Tensor, float],
+        processed_depth: torch.Tensor | None = None,
+    ) -> None:
         with self.op_lock:
             frame, frame_time = frame_data
             if self.window is not None and self.last_frame_time < frame_time:
+                if self.window.show_depth_preview and processed_depth is not None:
+                    frame = make_depth_preview(processed_depth, (self.height, self.width))
                 wx.CallAfter(self.window.update_frame, frame)
                 self.last_frame_time = frame_time
 

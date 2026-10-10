@@ -458,8 +458,16 @@ def iw3_desktop_main(args, init_wxapp=True):
                 frame = screenshot_thread.get_frame()
                 if frame is None:
                     break
+                depth_preview: list[torch.Tensor] = []
+                preview_enabled = args.local_viewer and server.is_depth_preview_enabled()
                 sbs = IW3U.process_image(
-                    frame, args, depth_model, side_model, autocrop_uncrop=True, depth_reuse=depth_reuse
+                    frame,
+                    args,
+                    depth_model,
+                    side_model,
+                    autocrop_uncrop=True,
+                    depth_reuse=depth_reuse,
+                    depth_preview_callback=depth_preview.append if preview_enabled else None,
                 )
 
                 if not args.local_viewer:
@@ -476,7 +484,7 @@ def iw3_desktop_main(args, init_wxapp=True):
                             )
                         )
                 else:
-                    server.set_frame_data((sbs, tick))
+                    server.set_frame_data((sbs, tick), processed_depth=depth_preview[0] if depth_preview else None)
 
                 if count > 1 and tick - last_status_time > 1:
                     last_status_time = tick
