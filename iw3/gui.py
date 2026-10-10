@@ -667,6 +667,13 @@ class MainFrame(wx.Frame):
         self.chk_compile.SetToolTip(T("Enable model compiling"))
         self.chk_compile.SetValue(False)
 
+        self.chk_reuse_identical_frames = wx.CheckBox(
+            self.grp_processor, label=T("Reuse similar frames"), name="chk_reuse_identical_frames"
+        )
+        self.chk_reuse_identical_frames.SetToolTip(
+            T("Reuse depth for nearly identical frames, allowing slight compression noise")
+        )
+
         layout = wx.GridBagSizer(vgap=5, hgap=4)
         layout.SetEmptyCellSize((0, 0))
         layout.Add(self.lbl_device, (0, 0), flag=wx.ALIGN_CENTER_VERTICAL)
@@ -680,6 +687,7 @@ class MainFrame(wx.Frame):
         layout.Add(self.chk_fp16, (3, 2), flag=wx.EXPAND)
         layout.Add(self.chk_cuda_stream, (3, 3), flag=wx.EXPAND)
         layout.Add(self.chk_compile, (4, 0), flag=wx.EXPAND)
+        layout.Add(self.chk_reuse_identical_frames, (4, 1), (1, 3), flag=wx.EXPAND)
 
         sizer_processor = wx.StaticBoxSizer(self.grp_processor, wx.VERTICAL)
         sizer_processor.Add(layout, 1, wx.ALL | wx.EXPAND, 4)
@@ -1446,6 +1454,7 @@ class MainFrame(wx.Frame):
             tta=self.chk_tta.GetValue(),
             disable_amp=not self.chk_fp16.GetValue(),
             low_vram=self.chk_low_vram.GetValue(),
+            reuse_identical_frames=self.chk_reuse_identical_frames.GetValue(),
             cuda_stream=self.chk_cuda_stream.GetValue(),
             compile=self.chk_compile.IsEnabled() and self.chk_compile.IsChecked(),
             resume=resume,

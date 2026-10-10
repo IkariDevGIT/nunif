@@ -89,6 +89,17 @@ class VideoDepthAnythingStreamingModel(BaseDepthModel):
     def reset_state(self):
         self.model.reset_state()
 
+    def advance_reused_frame(self) -> None:
+        # Replay the previous hidden state while advancing VDA's temporal window.
+        model = self.model
+        assert model.frame_cache_list
+        model.id += 1
+        model.frame_id_list.append(model.id)
+        model.frame_cache_list.append(model.frame_cache_list[-1])
+        if len(model.frame_cache_list) > model.gap + 1:
+            del model.frame_id_list[1]
+            del model.frame_cache_list[1]
+
     def infer(self, x, enable_amp=True, edge_dilation=0, depth_aa=False, **kwargs):
         if not torch.is_tensor(x):
             x = TF.to_tensor(x).to(self.device)

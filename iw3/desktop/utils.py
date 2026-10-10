@@ -20,6 +20,7 @@ from nunif.models.data_parallel import DeviceSwitchInference
 
 from .. import models  # noqa
 from .. import utils as IW3U
+from ..frame_depth_reuse import FrameDepthReuse
 from ..stereo_model_factory import get_mlbw_divergence_level
 from .screenshot_process import (  # noqa
     ScreenshotProcess,
@@ -449,6 +450,7 @@ def iw3_desktop_main(args, init_wxapp=True):
         count = last_status_time = 0
         fps_counter = deque(maxlen=120)
         prev_divergence = args.divergence
+        depth_reuse = FrameDepthReuse(depth_model) if args.reuse_identical_frames else None
 
         while True:
             with args.state["args_lock"]:
@@ -456,7 +458,9 @@ def iw3_desktop_main(args, init_wxapp=True):
                 frame = screenshot_thread.get_frame()
                 if frame is None:
                     break
-                sbs = IW3U.process_image(frame, args, depth_model, side_model, autocrop_uncrop=True)
+                sbs = IW3U.process_image(
+                    frame, args, depth_model, side_model, autocrop_uncrop=True, depth_reuse=depth_reuse
+                )
 
                 if not args.local_viewer:
                     if args.gpu_jpeg:

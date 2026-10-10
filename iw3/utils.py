@@ -8,6 +8,7 @@ import traceback
 import warnings
 from concurrent.futures import ThreadPoolExecutor as PoolExecutor
 from os import path
+from typing import Any, cast
 
 import av
 import numpy as np
@@ -54,6 +55,7 @@ from .depth_model_factory import create_depth_model
 from .dilation import dilate_edge, edge_dilation_is_enabled
 from .equirectangular import equirectangular_projection
 from .forward_warp import apply_divergence_forward_warp
+from .frame_depth_reuse import FrameDepthReuse
 from .hub_dir import HUB_MODEL_DIR
 from .inpaint_utils import INPAINT_MODELS
 from .mapper import MAPPER_ALL, get_mapper, resolve_mapper_name
@@ -573,7 +575,15 @@ def debug_depth_image(depth, args):
 
 
 def process_image(
-    x, args, depth_model, side_model, skip_autocrop=None, autocrop_uncrop=False, alpha=None, fill_color=0.0
+    x,
+    args,
+    depth_model,
+    side_model,
+    skip_autocrop=None,
+    autocrop_uncrop=False,
+    alpha=None,
+    fill_color=0.0,
+    depth_reuse: FrameDepthReuse | None = None,
 ):
     assert depth_model.get_ema_buffer_size() == 1
 
@@ -583,19 +593,25 @@ def process_image(
         autocrop = AutoCrop.from_image(x, mode=args.autocrop, uncrop_enabled=autocrop_uncrop)
 
     with torch.inference_mode():
+        infer_depth: Any = depth_reuse.infer if depth_reuse is not None else depth_model.infer
+        reuse_options: dict[str, Any] = {}
+        if depth_reuse is not None:
+            comparison = torch.cat((x, alpha), dim=0) if alpha is not None else x
+            reuse_options["comparison_frames"] = comparison
         if alpha is not None:
             x = x * alpha + fill_color * (1.0 - alpha)
 
         x = preprocess_image(x, args)
         x = autocrop.crop(x)
         if alpha is not None:
-            depth = depth_model.infer(
+            depth = infer_depth(
                 x,
                 tta=args.tta,
                 low_vram=args.low_vram,
                 enable_amp=not args.disable_amp,
                 edge_dilation=0,
                 depth_aa=False,
+                **reuse_options,
             )
             depth_alpha = F.interpolate(
                 alpha.unsqueeze(0),
@@ -608,18 +624,19 @@ def process_image(
             depth[torch.logical_not(mask)] = (depth[mask].min() + depth.min()) * 0.5
             if args.depth_aa and hasattr(depth_model, "depth_aa") and isinstance(depth_model.depth_aa, torch.nn.Module):
                 with autocast(device=depth.device, enabled=not args.disable_amp):
-                    depth = depth_model.depth_aa.infer(depth.unsqueeze(0)).squeeze(0)
+                    depth = cast(Any, depth_model.depth_aa).infer(depth.unsqueeze(0)).squeeze(0)
             if edge_dilation_is_enabled(args.edge_dilation):
                 depth = dilate_edge(depth.unsqueeze(0), args.edge_dilation).squeeze(0)
             depth = depth_model.minmax_normalize_chw(depth)
         else:
-            depth = depth_model.infer(
+            depth = infer_depth(
                 x,
                 tta=args.tta,
                 low_vram=args.low_vram,
                 enable_amp=not args.disable_amp,
                 edge_dilation=args.edge_dilation,
                 depth_aa=args.depth_aa,
+                **reuse_options,
             )
             depth = depth_model.minmax_normalize_chw(depth)
 
@@ -775,6 +792,8 @@ def extract_frame_rgb_alpha(frame, device):
 
 
 def bind_single_frame_callback(depth_model, side_model, segment_pts, args):
+    depth_reuse = FrameDepthReuse(depth_model) if args.reuse_identical_frames else None
+    infer_depth = depth_reuse.infer if depth_reuse is not None else depth_model.infer
     src_queue = []
     device = args.state["device"]
     frame_cpu_offload = depth_model.get_ema_buffer_size() > 1 and device.type not in {"cpu", "mps"}
@@ -848,6 +867,8 @@ def bind_single_frame_callback(depth_model, side_model, segment_pts, args):
         if frame is None:
             # flush
             yield from _postprocess(depth_model.flush_minmax_normalize(), flush=True)
+            if depth_reuse is not None:
+                depth_reuse.clear()
             return
 
         offload_dtype = VU.get_source_dtype(frame)
@@ -877,13 +898,22 @@ def bind_single_frame_callback(depth_model, side_model, segment_pts, args):
             # gpu buffer
             src_queue.append((x, alpha, frame.pts))
 
-        depth = depth_model.infer(
+        reuse_options = (
+            {
+                "comparison_frames": torch.cat((x, alpha.to(x.device)), dim=0) if alpha is not None else x,
+                "reset_after": [frame.pts in segment_pts],
+            }
+            if depth_reuse is not None
+            else {}
+        )
+        depth = infer_depth(
             x,
             tta=args.tta,
             low_vram=args.low_vram,
             enable_amp=not args.disable_amp,
             edge_dilation=args.edge_dilation,
             depth_aa=args.depth_aa,
+            **reuse_options,
         )
         depth = depth_model.minmax_normalize_chw(depth)
         depths = [depth] if depth is not None else []
@@ -898,6 +928,8 @@ def bind_single_frame_callback(depth_model, side_model, segment_pts, args):
 
 
 def bind_batch_frame_callback(depth_model, side_model, segment_pts, args):
+    depth_reuse = FrameDepthReuse(depth_model) if args.reuse_identical_frames else None
+    infer_depth = depth_reuse.infer if depth_reuse is not None else depth_model.infer
     enqueue_ticket_lock = TicketLock()
     dequeue_ticket_lock = TicketLock()
     streams = threading.local()
@@ -988,18 +1020,28 @@ def bind_batch_frame_callback(depth_model, side_model, segment_pts, args):
                     src_queue.append((x, alpha_batch, pts))
 
             if flush:
+                if depth_reuse is not None:
+                    depth_reuse.clear()
                 return None, dequeue_ticket_id
             else:
+                reuse_options = {}
+                if depth_reuse is not None:
+                    comparison_frames = torch.cat((x, alpha_batch), dim=1) if alpha_batch is not None else x
+                    reuse_options = {
+                        "comparison_frames": comparison_frames,
+                        "reset_after": [t in segment_pts for t in pts],
+                    }
                 if alpha_batch is not None:
                     fill_color = torch.tensor([0.4, 0.5, 0.6], dtype=x.dtype, device=x.device).view(1, 3, 1, 1)
                     x = x * alpha_batch + fill_color * (1.0 - alpha_batch)
-                depth_batch = depth_model.infer(
+                depth_batch = infer_depth(
                     x,
                     tta=args.tta,
                     low_vram=args.low_vram,
                     enable_amp=not args.disable_amp,
                     edge_dilation=args.edge_dilation,
                     depth_aa=args.depth_aa,
+                    **reuse_options,
                 )
 
                 if alpha_batch is not None:
@@ -1142,6 +1184,7 @@ def bind_vda_frame_callback(depth_model, side_model, segment_pts, args):
             enable_amp=not args.disable_amp,
             edge_dilation=args.edge_dilation,
             depth_aa=args.depth_aa,
+            reuse_identical_frames=args.reuse_identical_frames,
         )
 
         pts_queue.clear()
@@ -1716,6 +1759,8 @@ def get_resume_seq(depth_dir, rgb_dir):
 
 
 def bind_export_single_frame_callback(depth_model, segment_pts, rgb_dir, depth_dir, pool, args):
+    depth_reuse = FrameDepthReuse(depth_model) if args.reuse_identical_frames else None
+    infer_depth = depth_reuse.infer if depth_reuse is not None else depth_model.infer
     batch_queue = []
     pts_queue = []
     src_queue = []
@@ -1760,13 +1805,15 @@ def bind_export_single_frame_callback(depth_model, segment_pts, rgb_dir, depth_d
     def _batch_infer():
         x = torch.stack(batch_queue)
         reset_ema = [t in segment_pts for t in pts_queue]
-        depth_batch = depth_model.infer(
+        reuse_options = {"reset_after": reset_ema} if depth_reuse is not None else {}
+        depth_batch = infer_depth(
             x,
             tta=args.tta,
             low_vram=args.low_vram,
             enable_amp=not args.disable_amp,
             edge_dilation=edge_dilation,
             depth_aa=args.depth_aa,
+            **reuse_options,
         )
         depth_list = depth_model.minmax_normalize(depth_batch, reset_ema=reset_ema)
 
@@ -1783,6 +1830,8 @@ def bind_export_single_frame_callback(depth_model, segment_pts, rgb_dir, depth_d
             # flush
             if batch_queue:
                 _batch_infer()
+            if depth_reuse is not None:
+                depth_reuse.clear()
             return _postprocess(depth_model.flush_minmax_normalize())
 
         x = VU.to_tensor(frame, device=device)
@@ -1864,6 +1913,7 @@ def bind_export_vda_frame_callback(depth_model, segment_pts, rgb_dir, depth_dir,
             enable_amp=not args.disable_amp,
             edge_dilation=edge_dilation,
             depth_aa=args.depth_aa,
+            reuse_identical_frames=args.reuse_identical_frames,
         )
 
         pts_queue.clear()
@@ -1936,6 +1986,7 @@ def export_video(input_filename, output_dir, args, title=None):
                 "mapper": args.mapper,
                 "edge_dilation": args.edge_dilation,
                 "depth_aa": args.depth_aa,
+                "reuse_identical_frames": args.reuse_identical_frames,
                 "max_fps": args.max_fps,
                 "ema_normalize": args.ema_normalize,
                 "ema_decay": args.ema_decay,
@@ -2549,6 +2600,11 @@ def create_parser(required_true=True):
     parser.add_argument("--disable-exif-transpose", action="store_true", help="Disable EXIF orientation transpose")
     parser.add_argument("--rotate-right", action="store_true", help="Rotate 90 degrees to the right(clockwise)")
     parser.add_argument("--low-vram", action="store_true", help="disable batch processing for low memory GPU")
+    parser.add_argument(
+        "--reuse-identical-frames",
+        action="store_true",
+        help="reuse depth for nearly identical video/desktop frames; tolerate slight compression noise",
+    )
     parser.add_argument("--keyframe", action="store_true", help="process only keyframe as image")
     parser.add_argument("--keyframe-interval", type=float, default=4.0, help="keyframe minimum interval (sec)")
     parser.add_argument("--vf", type=str, default="", help="video filter options for ffmpeg.")

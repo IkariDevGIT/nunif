@@ -290,6 +290,25 @@ Export and Export Disparity are features to output depth and frame images.
 
 See https://github.com/nagadomi/nunif/issues/97#issuecomment-2027349722 for details at the moment.
 
+## Reuse similar frames (`--reuse-identical-frames`)
+
+Enable **Reuse similar frames** under Processor, or add `--reuse-identical-frames`
+to video conversion, depth export, or desktop streaming. It is disabled by default.
+Frames are compared on the processing device at full decoded resolution. Small
+compression noise is allowed; maximum pixel differences and local changes are
+checked so small moving objects are not hidden by a whole-image average.
+Comparisons stay anchored to the frame that produced the cached depth, preventing
+gradual drift. Changes indistinguishable from the permitted noise can still reuse
+depth.
+
+Similar frames reuse raw depth while their current RGB image is rendered normally.
+Frame count, timing, and flicker reduction are preserved. Scene boundaries and new
+jobs clear the cache. VideoDepthAnything Streaming advances its temporal history
+using the cached hidden state. Buffered VideoDepthAnything keeps its lookahead and
+alignment, reuses encoder features and depth, and skips predictions for unchanged
+temporal windows; mixed windows still require temporal decoding. Savings depend on
+how much the input repeats. Caching also uses additional device memory.
+
 # `Flicker Reduction` (`--ema-normalize`)
 
 This feature stabilizes temporal variations in the depth range using exponential moving average.

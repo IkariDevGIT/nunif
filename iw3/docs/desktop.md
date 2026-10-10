@@ -119,6 +119,14 @@ If the `Estimated FPS` is significantly lower than the specified FPS, it means t
 
 Due to `--batch-size 1` processing, the FPS will be considerably lower than during video conversion. Also, due to browser limitations, it may not be possible to achieve an FPS higher than `Streaming FPS = 30`.
 
+### Reuse similar frames
+
+Enable **Reuse similar frames** under Processor, or add `--reuse-identical-frames`.
+Nearly unchanged captures reuse their previous depth prediction, allowing slight
+compression noise. The current capture is still rendered, so a paused picture
+avoids repeated depth inference. Small local changes invalidate the cache when
+they exceed the conservative noise tolerance. VDA Streaming is supported.
+
 ### MJPEG Settings
 
 You can specify the JPEG quality with the `--stream-quality` option (0-100).

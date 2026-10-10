@@ -1,5 +1,8 @@
 import os
+from collections.abc import Collection
+from contextlib import nullcontext
 from os import path
+from typing import Any
 
 import torch
 import torch.nn.functional as F
@@ -13,6 +16,7 @@ from .base_depth_model import HUB_MODEL_DIR, BaseDepthModel
 from .depth_anything_model import batch_preprocess as batch_preprocess_da
 from .dilation import dilate_edge, edge_dilation_is_enabled
 from .models import DepthAA
+from .vda_frame_reuse import DelayedDepthReuse, VDAInferenceReuse
 
 NAME_MAP = {
     "VDA_S": "vits",
@@ -125,6 +129,8 @@ class VideoDepthAnythingModel(BaseDepthModel):
         self.metric_depth = model_type in METRIC_DEPTH_TYPES
         # if True, use 1 / depth and is_metric==False
         self.force_disparity = True
+        self.frame_reuse: DelayedDepthReuse | None = None
+        self.encoder_reuse: VDAInferenceReuse | None = None
 
     def load_model(self, model_type, resolution=None, device=None):
         # load aa model
@@ -187,6 +193,10 @@ class VideoDepthAnythingModel(BaseDepthModel):
         self.model.reset_state()
         self.input_frame_count = 0
         self.output_frame_count = 0
+        if self.frame_reuse is not None:
+            self.frame_reuse.clear()
+        if self.encoder_reuse is not None:
+            self.encoder_reuse.clear()
 
     def reset(self):
         self.reset_state()
@@ -225,18 +235,40 @@ class VideoDepthAnythingModel(BaseDepthModel):
 
         return out
 
-    def infer_with_normalize(self, x, pts, reset_pts, enable_amp=True, edge_dilation=0, depth_aa=None, **kwargs):
+    def infer_with_normalize(
+        self,
+        x: torch.Tensor,
+        pts: list[int],
+        reset_pts: Collection[int],
+        enable_amp: bool = True,
+        edge_dilation: int = 0,
+        depth_aa: torch.nn.Module | bool | None = None,
+        reuse_identical_frames: bool = False,
+        **kwargs: Any,
+    ) -> list[torch.Tensor]:
         assert x.ndim == 4
         depth_aa = self.depth_aa if depth_aa else None
 
+        if reuse_identical_frames and self.frame_reuse is None:
+            self.frame_reuse = DelayedDepthReuse()
+            self.encoder_reuse = VDAInferenceReuse()
+        elif not reuse_identical_frames:
+            self.frame_reuse = self.encoder_reuse = None
+
         B = x.shape[0]
+        comparison_frames = x
         x = batch_preprocess(
             x, self.model.prep_lower_bound, metric_depth=self.model.metric_depth, limit_resolution=self.limit_resolution
         )
         outputs = []
         for i in range(B):
+            if self.frame_reuse is not None:
+                reuse = self.frame_reuse.append(comparison_frames[i])
+                if not reuse and self.encoder_reuse is not None:
+                    self.encoder_reuse.clear_window()
             self.input_frame_count += 1
-            ret = self.model.infer(x[i], use_amp=enable_amp)
+            with self.encoder_reuse.context(self.model) if self.encoder_reuse is not None else nullcontext():
+                ret = self.model.infer(x[i], use_amp=enable_amp)
             if ret is not None:
                 self.output_frame_count += len(ret)
                 out = torch.stack(ret)
@@ -248,6 +280,8 @@ class VideoDepthAnythingModel(BaseDepthModel):
                     force_disparity=self.force_disparity,
                     enable_amp=enable_amp,
                 )
+                if self.frame_reuse is not None:
+                    out = self.frame_reuse.apply(out)
                 for j in range(out.shape[0]):
                     normalized_depth = self.minmax_normalize_chw(out[j])
                     if normalized_depth is not None:
@@ -277,17 +311,24 @@ class VideoDepthAnythingModel(BaseDepthModel):
                 force_disparity=self.force_disparity,
                 enable_amp=enable_amp,
             )
+            if self.frame_reuse is not None:
+                out = self.frame_reuse.apply(out)
             for i in range(out.shape[0]):
                 normalized_depth = self.minmax_normalize_chw(out[i])
                 if normalized_depth is not None:
                     outputs.append(normalized_depth)
             outputs += self.flush_minmax_normalize()
+        if self.frame_reuse is not None:
+            self.frame_reuse.clear()
+        if self.encoder_reuse is not None:
+            self.encoder_reuse.clear()
         return outputs
 
     def _flush(self, enable_amp=True):
         results = []
         while self.output_frame_count < self.input_frame_count:
-            ret = self.model.infer(None, use_amp=enable_amp)
+            with self.encoder_reuse.context(self.model) if self.encoder_reuse is not None else nullcontext():
+                ret = self.model.infer(None, use_amp=enable_amp)
             if ret is None:
                 continue
             results += ret
