@@ -212,6 +212,26 @@ Specify the `--local-viewer` option.
 
 Even if specified from the CLI, a GUI window will be displayed, so wxpython and OpenGL are required (installed from `requirements-gui.txt`).
 
+To switch the viewer's monitor to a larger display mode while fullscreen, use:
+
+```bash
+python -m iw3.desktop --local-viewer --local-viewer-fullscreen-display-mode
+```
+
+Press F11 to enter or leave fullscreen, or Escape to leave. The viewer prefers twice the
+current width and height at a refresh rate close to the original. If that mode is unavailable,
+it prefers the same aspect ratio and the closest supported size, without reducing either
+dimension. If no larger mode exists, fullscreen keeps the current display mode.
+
+The viewer changes and confirms the monitor mode before entering fullscreen, allowing the
+GUI to process the display change first.
+
+The original mode is restored when leaving fullscreen or closing the viewer. An independent
+watchdog also attempts restoration if the application crashes or stops sending heartbeats
+for 10 seconds. Recovery can fail if the monitor is disconnected or the driver rejects the mode.
+This opt-in feature uses PyMonCtl from `requirements-gui.txt` and supports Windows and Linux
+X11 with `xrandr`; Wayland and macOS are unsupported. Ordinary fullscreen remains available.
+
 On a CUDA run the viewer tries to copy frames straight from GPU memory into the window
 (CUDA-GL Interop). That only works when the window is drawn by the same GPU CUDA is running
 on, so on a Wayland session whose compositor runs on the integrated GPU, on a PRIME laptop, or
